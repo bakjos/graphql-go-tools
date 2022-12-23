@@ -737,6 +737,52 @@ func TestExecutionEngineV2_Execute(t *testing.T) {
 		},
 	))
 
+	t.Run("execute simple hero operation with graphql data source and transformation", runWithoutError(
+		ExecutionEngineV2TestCase{
+			schema:    starwarsSchema(t),
+			operation: loadStarWarsQuery(starwars.FileSimpleHeroQuery, nil),
+			dataSources: []plan.DataSourceConfiguration{
+				{
+					RootNodes: []plan.TypeField{
+						{
+							TypeName:   "Query",
+							FieldNames: []string{"hero"},
+						},
+					},
+					ChildNodes: []plan.TypeField{
+						{
+							TypeName:   "Character",
+							FieldNames: []string{"name"},
+						},
+					},
+					Factory: &graphql_datasource.Factory{
+						HTTPClient: testNetHttpClient(t, roundTripperTestCase{
+							expectedHost:     "example.com",
+							expectedPath:     "/",
+							expectedBody:     "",
+							sendResponseBody: `{"data":{"hero":{"name":"Luke Skywalker"}}}`,
+							sendStatusCode:   200,
+						}),
+					},
+					Custom: graphql_datasource.ConfigJson(graphql_datasource.Configuration{
+						Fetch: graphql_datasource.FetchConfiguration{
+							URL:    "https://example.com/",
+							Method: "GET",
+						},
+					}),
+				},
+			},
+			fields: []plan.FieldConfiguration{
+				{
+					TypeName:       "Character",
+					FieldName:      "name",
+					Transformation: "{\"name\":\"{{ .name }} Modified\"}",
+				},
+			},
+			expectedResponse: `{"data":{"hero":{"name":"Luke Skywalker Modified"}}}`,
+		},
+	))
+
 	t.Run("execute the correct operation when sending multiple queries", runWithoutError(
 		ExecutionEngineV2TestCase{
 			schema: starwarsSchema(t),
