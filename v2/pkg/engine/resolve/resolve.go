@@ -930,7 +930,9 @@ func (r *Resolver) executeSubscriptionUpdate(resolveCtx *Context, sub *subscript
 
 	if err := resolvable.InitSubscription(resolveCtx, input, sub.resolve.Trigger.PostProcessing); err != nil {
 		r.resolveArenaPool.Release(resolveArena)
-		sub.writeError(r.errorFormatter, resolveCtx, err, sub.resolve.Response)
+		if sub != nil {
+			sub.writeError(r.errorFormatter, resolveCtx, err, sub.resolve.Response)
+		}
 		if r.options.Debug {
 			fmt.Printf("resolver:trigger:subscription:init:failed:%d\n", sub.id.SubscriptionID)
 		}
@@ -947,7 +949,9 @@ func (r *Resolver) executeSubscriptionUpdate(resolveCtx *Context, sub *subscript
 
 	if err := loader.LoadGraphQLResponseData(resolveCtx, sub.resolve.Response); err != nil {
 		r.resolveArenaPool.Release(resolveArena)
-		sub.writeError(r.errorFormatter, resolveCtx, err, sub.resolve.Response)
+		if sub != nil {
+			sub.writeError(r.errorFormatter, resolveCtx, err, sub.resolve.Response)
+		}
 		if r.options.Debug {
 			fmt.Printf("resolver:trigger:subscription:load:failed:%d\n", sub.id.SubscriptionID)
 		}
@@ -980,8 +984,12 @@ func (r *Resolver) executeSubscriptionUpdate(resolveCtx *Context, sub *subscript
 
 	if err := resolvable.Resolve(resolveCtx.ctx, sub.resolve.Response.Data, sub.resolve.Response.Fetches, sub.writer); err != nil {
 		r.resolveArenaPool.Release(resolveArena)
-		r.errorFormatter.WriteError(resolveCtx, err, sub.resolve.Response, sub.writer)
-		sub.writeMu.Unlock()
+		if r.errorFormatter != nil {
+			r.errorFormatter.WriteError(resolveCtx, err, sub.resolve.Response, sub.writer)
+		}
+		if sub != nil {
+			sub.writeMu.Unlock()
+		}
 		if r.options.Debug {
 			fmt.Printf("resolver:trigger:subscription:resolve:failed:%d\n", sub.id.SubscriptionID)
 		}
