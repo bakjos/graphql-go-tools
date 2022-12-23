@@ -14,6 +14,7 @@ import (
 
 	"github.com/buger/jsonparser"
 	"github.com/cespare/xxhash/v2"
+	"github.com/jensneuse/pipeline/pkg/pipe"
 	"github.com/tidwall/gjson"
 	errors "golang.org/x/xerrors"
 
@@ -82,8 +83,10 @@ type Node interface {
 	NodeKind() NodeKind
 }
 
-type NodeKind int
-type FetchKind int
+type (
+	NodeKind  int
+	FetchKind int
+)
 
 const (
 	NodeKindObject NodeKind = iota + 1
@@ -96,6 +99,7 @@ const (
 	NodeKindInteger
 	NodeKindFloat
 	NodeKindCustom
+	NodeKindTransformation
 
 	FetchKindSingle FetchKind = iota + 1
 	FetchKindParallel
@@ -251,6 +255,7 @@ func (c *Context) addResponseArrayElements(elements []string) {
 func (c *Context) removeResponseLastElements(elements []string) {
 	c.responseElements = c.responseElements[:len(c.responseElements)-len(elements)]
 }
+
 func (c *Context) removeResponseArrayLastElements(elements []string) {
 	c.responseElements = c.responseElements[:len(c.responseElements)-(len(elements)+1)]
 }
@@ -334,17 +339,18 @@ type SubscriptionDataSource interface {
 }
 
 type Resolver struct {
-	ctx               context.Context
-	dataLoaderEnabled bool
-	resultSetPool     sync.Pool
-	byteSlicesPool    sync.Pool
-	waitGroupPool     sync.Pool
-	bufPairPool       sync.Pool
-	bufPairSlicePool  sync.Pool
-	errChanPool       sync.Pool
-	hash64Pool        sync.Pool
-	dataloaderFactory *dataLoaderFactory
-	fetcher           *Fetcher
+	ctx                context.Context
+	dataLoaderEnabled  bool
+	resultSetPool      sync.Pool
+	byteSlicesPool     sync.Pool
+	transformationPool sync.Pool
+	waitGroupPool      sync.Pool
+	bufPairPool        sync.Pool
+	bufPairSlicePool   sync.Pool
+	errChanPool        sync.Pool
+	hash64Pool         sync.Pool
+	dataloaderFactory  *dataLoaderFactory
+	fetcher            *Fetcher
 }
 
 type inflightFetch struct {
@@ -369,6 +375,11 @@ func New(ctx context.Context, fetcher *Fetcher, enableDataLoader bool) *Resolver
 			New: func() interface{} {
 				slice := make([][]byte, 0, 24)
 				return &slice
+			},
+		},
+		transformationPool: sync.Pool{
+			New: func() interface{} {
+				return fastbuffer.New()
 			},
 		},
 		waitGroupPool: sync.Pool{
@@ -435,6 +446,8 @@ func (r *Resolver) resolveNode(ctx *Context, node Node, data []byte, bufPair *Bu
 		return
 	case *CustomNode:
 		return r.resolveCustom(ctx, n, data, bufPair)
+	case *Transformation:
+		return r.resolveTransformation(ctx, n, data, bufPair)
 	default:
 		return
 	}
@@ -461,9 +474,7 @@ func extractResponse(responseData []byte, bufPair *BufPair, cfg ProcessResponseC
 		switch i {
 		case rootErrorsPathIndex:
 			_, _ = jsonparser.ArrayEach(bytes, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-				var (
-					message, locations, path, extensions []byte
-				)
+				var message, locations, path, extensions []byte
 				jsonparser.EachKey(value, func(i int, bytes []byte, valueType jsonparser.ValueType, err error) {
 					switch i {
 					case errorsMessagePathIndex:
@@ -492,7 +503,6 @@ func extractResponse(responseData []byte, bufPair *BufPair, cfg ProcessResponseC
 }
 
 func (r *Resolver) ResolveGraphQLResponse(ctx *Context, response *GraphQLResponse, data []byte, writer io.Writer) (err error) {
-
 	buf := r.getBufPair()
 	defer r.freeBufPair(buf)
 
@@ -538,7 +548,6 @@ func writeAndFlush(writer FlushWriter, msg []byte) error {
 }
 
 func (r *Resolver) ResolveGraphQLSubscription(ctx *Context, subscription *GraphQLSubscription, writer FlushWriter) (err error) {
-
 	buf := r.getBufPair()
 	err = subscription.Trigger.InputTemplate.Render(ctx, nil, buf.Data)
 	if err != nil {
@@ -587,7 +596,6 @@ func (r *Resolver) ResolveGraphQLSubscription(ctx *Context, subscription *GraphQ
 }
 
 func (r *Resolver) ResolveGraphQLStreamingResponse(ctx *Context, response *GraphQLStreamingResponse, data []byte, writer FlushWriter) (err error) {
-
 	if err := r.validateContext(ctx); err != nil {
 		return err
 	}
@@ -660,7 +668,6 @@ Loop:
 }
 
 func (r *Resolver) ResolveGraphQLResponsePatch(ctx *Context, patch *GraphQLResponsePatch, data, path, extraPath []byte, writer io.Writer) (err error) {
-
 	buf := r.getBufPair()
 	defer r.freeBufPair(buf)
 
@@ -777,7 +784,6 @@ func (r *Resolver) resolveArray(ctx *Context, array *Array, data []byte, arrayBu
 }
 
 func (r *Resolver) resolveArraySynchronous(ctx *Context, array *Array, arrayItems *[][]byte, arrayBuf *BufPair) (err error) {
-
 	itemBuf := r.getBufPair()
 	defer r.freeBufPair(itemBuf)
 
@@ -824,7 +830,6 @@ func (r *Resolver) resolveArraySynchronous(ctx *Context, array *Array, arrayItem
 }
 
 func (r *Resolver) resolveArrayAsynchronous(ctx *Context, array *Array, arrayItems *[][]byte, arrayBuf *BufPair) (err error) {
-
 	arrayBuf.Data.WriteBytes(lBrack)
 
 	bufSlice := r.getBufPairSlice()
@@ -886,6 +891,18 @@ func (r *Resolver) resolveArrayAsynchronous(ctx *Context, array *Array, arrayIte
 
 	arrayBuf.Data.WriteBytes(rBrack)
 	return
+}
+
+func (r *Resolver) resolveTransformation(ctx *Context, t *Transformation, data []byte, transformBuf *BufPair) error {
+	buffer := r.transformationPool.Get().(*fastbuffer.FastBuffer)
+	defer func() {
+		r.transformationPool.Put(buffer)
+	}()
+
+	if err := t.Pipeline.Run(bytes.NewReader(data), buffer); err != nil {
+		return err
+	}
+	return r.resolveNode(ctx, t.InnerValue, buffer.Bytes(), transformBuf)
 }
 
 func (r *Resolver) exportField(ctx *Context, export *FieldExport, value []byte) {
@@ -1401,6 +1418,7 @@ type Field struct {
 	SkipVariableName        string
 	IncludeDirectiveDefined bool
 	IncludeVariableName     string
+	Transformation
 }
 
 type Position struct {
@@ -1554,8 +1572,17 @@ type Stream struct {
 	PatchIndex       int
 }
 
+type Transformation struct {
+	InnerValue Node
+	Pipeline   *pipe.Pipeline
+}
+
 func (_ *Array) NodeKind() NodeKind {
 	return NodeKindArray
+}
+
+func (_ *Transformation) NodeKind() NodeKind {
+	return NodeKindTransformation
 }
 
 type GraphQLSubscription struct {
