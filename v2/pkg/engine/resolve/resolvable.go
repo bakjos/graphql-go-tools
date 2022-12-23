@@ -37,18 +37,19 @@ type Resolvable struct {
 	astjsonArena arena.Arena
 	parsers      []*astjson.Parser
 
-	print              bool
-	out                io.Writer
-	printErr           error
-	path               []fastjsonext.PathElement
-	depth              int
-	operationType      ast.OperationType
-	renameTypeNames    []RenameTypeName
-	ctx                *Context
-	authorizationError error
-	xxh                *xxhash.Digest
-	authorizationAllow map[uint64]struct{}
-	authorizationDeny  map[uint64]string
+	print               bool
+	out                 io.Writer
+	printErr            error
+	path                []fastjsonext.PathElement
+	depth               int
+	operationType       ast.OperationType
+	renameTypeNames     []RenameTypeName
+	ctx                 *Context
+	authorizationError  error
+	xxh                 *xxhash.Digest
+	authorizationAllow  map[uint64]struct{}
+	authorizationDeny   map[uint64]string
+	transformationCache map[string]*astjson.Value
 
 	wroteErrors         bool
 	wroteData           bool
@@ -220,6 +221,8 @@ func (r *Resolvable) Resolve(ctx context.Context, rootData *Object, fetchTree *F
 
 	r.skipAddingNullErrors = r.hasErrors() && !r.hasData()
 
+	r.transformationCache = make(map[string]*astjson.Value)
+
 	hasErrors := r.walkObject(rootData, r.data)
 	if r.authorizationError != nil {
 		return r.authorizationError
@@ -243,6 +246,7 @@ func (r *Resolvable) Resolve(ctx context.Context, rootData *Object, fetchTree *F
 		r.printErr = r.printExtensions(ctx, fetchTree)
 	}
 	r.printBytes(rBrace)
+	r.transformationCache = nil
 	return r.printErr
 }
 
@@ -578,6 +582,8 @@ func (r *Resolvable) walkNode(node Node, value *astjson.Value) bool {
 		return r.walkCustom(n, value)
 	case *Enum:
 		return r.walkEnum(n, value)
+	case *Transformation:
+		return r.walkTransformation(n, value)
 	default:
 		return false
 	}
@@ -1111,7 +1117,6 @@ func (r *Resolvable) walkCustom(c *CustomNode, value *astjson.Value) bool {
 
 func (r *Resolvable) writeArrayElementToBuffer(buf *bytes.Buffer, typeName string) {
 	_, _ = buf.WriteString("array element of type ")
-	_, _ = buf.WriteString(typeName)
 	_, _ = buf.WriteString(" at index ")
 	_, _ = buf.WriteString(strconv.Itoa(r.path[len(r.path)-1].Idx))
 	_, _ = buf.WriteString(".")
@@ -1219,6 +1224,51 @@ func (r *Resolvable) walkEnum(e *Enum, value *astjson.Value) bool {
 		r.renderEnumValue(value, e.Nullable)
 	}
 	return false
+}
+
+func (r *Resolvable) walkTransformation(t *Transformation, value *astjson.Value) bool {
+	var key bytes.Buffer
+	for i, p := range r.path {
+		key.WriteString(p.Name)
+		key.WriteString(".")
+		key.WriteString(strconv.Itoa(p.Idx))
+		if i < len(r.path)-1 {
+			key.WriteString(".")
+		}
+	}
+
+	parent := value
+	if !t.UseParentObject {
+		value = value.Get(t.Path...)
+		if astjson.ValueIsNull(value) {
+			if t.Nullable {
+				return r.walkNull()
+			}
+			r.addNonNullableFieldError(t.Path, parent)
+			return r.err()
+		}
+	}
+
+	sKey := key.String()
+	if v, ok := r.transformationCache[sKey]; ok {
+		return r.walkNode(t.InnerValue, v)
+	}
+
+	r.marshalBuf = value.MarshalTo(r.marshalBuf[:0])
+
+	buf := pool.BytesBuffer.Get()
+	defer pool.BytesBuffer.Put(buf)
+
+	err := t.Pipeline.Run(r.ctx.ctx, bytes.NewReader(r.marshalBuf), buf)
+
+	if err != nil {
+		r.addError(err.Error(), t.Path)
+		return r.err()
+	}
+
+	v := astjson.MustParseBytes(buf.Bytes())
+	r.transformationCache[sKey] = v
+	return r.walkNode(t.InnerValue, v)
 }
 
 func (r *Resolvable) addNonNullableFieldError(fieldPath []string, parent *astjson.Value) {
