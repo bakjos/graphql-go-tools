@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/jensneuse/abstractlogger"
+	"github.com/jensneuse/pipeline/pkg/pipe"
+	"github.com/jensneuse/pipeline/pkg/step"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -754,6 +756,111 @@ func TestExecutionEngineV2_Execute(t *testing.T) {
 			expectedResponse: `{"data":{"hero":{"name":"Luke Skywalker"}}}`,
 		},
 	))
+
+	t.Run("execute simple hero operation with graphql data source and transformation", runWithoutError(
+		ExecutionEngineV2TestCase{
+			schema:    starwarsSchema(t),
+			operation: loadStarWarsQuery(starwars.FileSimpleHeroQuery, nil),
+			dataSources: []plan.DataSourceConfiguration{
+				{
+					RootNodes: []plan.TypeField{
+						{
+							TypeName:   "Query",
+							FieldNames: []string{"hero"},
+						},
+					},
+					ChildNodes: []plan.TypeField{
+						{
+							TypeName:   "Character",
+							FieldNames: []string{"name"},
+						},
+					},
+					Factory: &graphql_datasource.Factory{
+						HTTPClient: testNetHttpClient(t, roundTripperTestCase{
+							expectedHost:     "example.com",
+							expectedPath:     "/",
+							expectedBody:     "",
+							sendResponseBody: `{"data":{"hero":{"name":"Luke Skywalker"}}}`,
+							sendStatusCode:   200,
+						}),
+					},
+					Custom: graphql_datasource.ConfigJson(graphql_datasource.Configuration{
+						Fetch: graphql_datasource.FetchConfiguration{
+							URL:    "https://example.com/",
+							Method: "GET",
+						},
+					}),
+				},
+			},
+			fields: []plan.FieldConfiguration{
+				{
+					TypeName:  "Character",
+					FieldName: "name",
+					Pipeline: &pipe.Pipeline{
+						Steps: []pipe.Step{
+							func() pipe.Step {
+								s, _ := step.NewJSON("{\"name\":\"{{ .name }} Modified\"}")
+								return s
+							}(),
+						},
+					},
+				},
+			},
+			expectedResponse: `{"data":{"hero":{"name":"Luke Skywalker Modified"}}}`,
+		},
+	))
+
+	t.Run("execute operation with array async input type", runWithoutError(ExecutionEngineV2TestCase{
+		schema: heroWithArgumentSchema(t),
+		operation: func(t *testing.T) Request {
+			return Request{
+				OperationName: "MyHeroes",
+				Variables: stringify(map[string]interface{}{
+					"heroNames": []string{"Luke Skywalker", "R2-D2"},
+				}),
+				Query: `query MyHeroes($heroNames: [String!]!){
+						heroes(names: $heroNames)
+					}`,
+			}
+		},
+		dataSources: []plan.DataSourceConfiguration{
+			{
+				RootNodes: []plan.TypeField{
+					{TypeName: "Query", FieldNames: []string{"heroes"}},
+				},
+				Factory: &graphql_datasource.Factory{
+					HTTPClient: testNetHttpClient(t, roundTripperTestCase{
+						expectedHost:     "example.com",
+						expectedPath:     "/",
+						expectedBody:     `{"query":"query($heroNames: [String!]!){heroes(names: $heroNames)}","variables":{"heroNames":["Luke Skywalker","R2-D2"]}}`,
+						sendResponseBody: `{"data":{"heroes":["Human","Droid"]}}`,
+						sendStatusCode:   200,
+					}),
+				},
+				Custom: graphql_datasource.ConfigJson(graphql_datasource.Configuration{
+					Fetch: graphql_datasource.FetchConfiguration{
+						URL:    "https://example.com/",
+						Method: "POST",
+					},
+				}),
+			},
+		},
+		fields: []plan.FieldConfiguration{
+			{
+				TypeName:            "Query",
+				FieldName:           "heroes",
+				Path:                []string{"heroes"},
+				ResolveAsynchronous: true,
+				Arguments: []plan.ArgumentConfiguration{
+					{
+						Name:       "names",
+						SourceType: plan.FieldArgumentSource,
+					},
+				},
+			},
+		},
+		expectedResponse: `{"data":{"heroes":["Human","Droid"]}}`,
+	}))
 
 	t.Run("execute the correct operation when sending multiple queries", runWithoutError(
 		ExecutionEngineV2TestCase{
