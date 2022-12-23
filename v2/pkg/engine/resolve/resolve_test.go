@@ -16,6 +16,9 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
+	pipeline "github.com/jensneuse/pipeline/pkg/pipe"
+	"github.com/jensneuse/pipeline/pkg/step"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1234,6 +1237,47 @@ func TestResolver_ResolveNode(t *testing.T) {
 				},
 			},
 		}, *NewContext(context.Background()), `{"data":{"id":"1"}}`
+	}))
+	t.Run("simpletransformation", testGraphQLErrFn(func(t *testing.T, r *Resolver, ctrl *gomock.Controller) (response *GraphQLResponse, ctx Context, expectedErr string) {
+		s, err := step.NewJSON("{\"fullName\":\"{{ .firstName }} {{ .lastName }}\"}")
+		assert.NoError(t, err)
+		return &GraphQLResponse{
+			Fetches: Single(&SingleFetch{
+				FetchConfiguration: FetchConfiguration{DataSource: FakeDataSource(`{"firstName":"John","lastName":"Doe"}`)},
+			}),
+			Data: &Object{
+				Fields: []*Field{
+					{
+						Name: []byte("firstName"),
+						Value: &String{
+							Path: []string{"firstName"},
+						},
+					},
+					{
+						Name: []byte("lastName"),
+						Value: &String{
+							Path: []string{"lastName"},
+						},
+					},
+					{
+						Name: []byte("name"),
+						Value: &Transformation{
+							InnerValue: &Object{
+								Fields: []*Field{
+									{
+										Name: []byte("fullName"),
+										Value: &String{
+											Path: []string{"fullName"},
+										},
+									},
+								},
+							},
+							Pipeline: &pipeline.Pipeline{Steps: []pipeline.Step{s}},
+						},
+					},
+				},
+			},
+		}, Context{ctx: context.Background()}, `{"data":{"firstName":"John","lastName":"Doe","name":{"fullName":"John Doe"}}}`
 	}))
 	t.Run("custom nullable", testGraphQLErrFn(func(t *testing.T, r *Resolver, ctrl *gomock.Controller) (response *GraphQLResponse, ctx Context, expectedErr string) {
 		return &GraphQLResponse{
