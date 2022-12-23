@@ -47,9 +47,14 @@ func (h *gqlSSEConnectionHandler) StartBlocking(sub Subscription) {
 		close(dataCh)
 		close(errCh)
 		close(sub.next)
+		if sub.complete != nil {
+			close(sub.complete)
+		}
 	}()
 
-	go h.subscribe(reqCtx, sub, dataCh, errCh)
+	complete := make(chan bool)
+
+	go h.subscribe(reqCtx, sub, dataCh, errCh, complete)
 
 	for {
 		select {
@@ -60,11 +65,16 @@ func (h *gqlSSEConnectionHandler) StartBlocking(sub Subscription) {
 			return
 		case <-reqCtx.Done():
 			return
+		case <-complete:
+			if sub.complete != nil {
+				sub.complete <- true
+			}
+			return
 		}
 	}
 }
 
-func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscription, dataCh, errCh chan []byte) {
+func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscription, dataCh, errCh chan []byte, complete chan<- bool) {
 	resp, err := h.performSubscriptionRequest(ctx)
 	if err != nil {
 		h.log.Error("failed to perform subscription request", log.Error(err))
@@ -92,12 +102,16 @@ func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscriptio
 		msg, err := reader.ReadEvent()
 		if err != nil {
 			if err == io.EOF {
+				if complete != nil {
+					complete <- true
+				}
 				return
 			}
 
 			h.log.Error("failed to read event", log.Error(err))
-
-			errCh <- []byte(internalError)
+			if ctx.Err() == nil {
+				errCh <- []byte(internalError)
+			}
 			return
 		}
 
@@ -128,6 +142,9 @@ func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscriptio
 
 				switch {
 				case bytes.Equal(event, eventTypeComplete):
+					if complete != nil {
+						complete <- true
+					}
 					return
 				case bytes.Equal(event, eventTypeNext):
 					continue
@@ -197,7 +214,6 @@ func trim(data []byte) []byte {
 }
 
 func (h *gqlSSEConnectionHandler) performSubscriptionRequest(ctx context.Context) (*http.Response, error) {
-
 	var req *http.Request
 	var err error
 
