@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
+	"github.com/jensneuse/pipeline/pkg/pipe"
+	"github.com/jensneuse/pipeline/pkg/step"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/wundergraph/graphql-go-tools/pkg/fastbuffer"
@@ -1565,6 +1567,54 @@ func TestResolver_ResolveNode(t *testing.T) {
 				},
 			},
 		}, Context{ctx: context.Background()}, `{"id":1,"name":"Jens","pet":{"name":"Woofie"}}`
+	}))
+	t.Run("simple transformation", testFn(true, false, func(t *testing.T, ctrl *gomock.Controller) (node Node, ctx Context, expectedOutput string) {
+		step, err := step.NewJSON("{\"fullName\":\"{{ .firstName }} {{ .lastName }}\"}")
+		assert.NoError(t, err)
+		return &Object{
+			Fetch: &SingleFetch{
+				BufferId:   0,
+				DataSource: FakeDataSource(`{"firstName":"John","lastName":"Doe"}`),
+			},
+			Fields: []*Field{
+				{
+					HasBuffer: true,
+					BufferID:  0,
+					Name:      []byte("firstName"),
+					Value: &String{
+						Path: []string{"firstName"},
+					},
+				},
+				{
+					HasBuffer: true,
+					BufferID:  0,
+					Name:      []byte("lastName"),
+					Value: &String{
+						Path: []string{"lastName"},
+					},
+				},
+				{
+					HasBuffer: true,
+					BufferID:  0,
+					Name:      []byte("name"),
+					Value: &Transformation{
+						InnerValue: &Object{
+							Fields: []*Field{
+								{
+									BufferID:  0,
+									HasBuffer: true,
+									Name:      []byte("fullName"),
+									Value: &String{
+										Path: []string{"fullName"},
+									},
+								},
+							},
+						},
+						Pipeline: &pipe.Pipeline{Steps: []pipe.Step{step}},
+					},
+				},
+			},
+		}, Context{ctx: context.Background()}, `{"firstName":"John","lastName":"Doe","name":{"fullName":"John Doe"}}`
 	}))
 	t.Run("with unescape json enabled", func(t *testing.T) {
 		t.Run("json object within a string", testFn(false, false, func(t *testing.T, ctrl *gomock.Controller) (node Node, ctx Context, expectedOutput string) {
@@ -4119,6 +4169,7 @@ func TestResolver_WithHeader(t *testing.T) {
 type TestFlushWriter struct {
 	flushed []string
 	buf     bytes.Buffer
+	closed  bool
 }
 
 func (t *TestFlushWriter) Write(p []byte) (n int, err error) {
@@ -4128,6 +4179,11 @@ func (t *TestFlushWriter) Write(p []byte) (n int, err error) {
 func (t *TestFlushWriter) Flush() {
 	t.flushed = append(t.flushed, t.buf.String())
 	t.buf.Reset()
+}
+
+func (t *TestFlushWriter) Close() error {
+	t.closed = true
+	return nil
 }
 
 func FakeStream(cancelFunc func(), messageFunc func(count int) (message string, ok bool)) *_fakeStream {
@@ -4142,12 +4198,13 @@ type _fakeStream struct {
 	messageFunc func(counter int) (message string, ok bool)
 }
 
-func (f *_fakeStream) Start(ctx context.Context, input []byte, next chan<- []byte) error {
+func (f *_fakeStream) Start(ctx context.Context, input []byte, next chan<- []byte, complete chan<- bool) error {
 	go func() {
 		time.Sleep(time.Millisecond)
 		count := 0
 		for {
 			if count == 3 {
+				complete <- true
 				f.cancel()
 				return
 			}
@@ -4245,10 +4302,13 @@ func TestResolver_ResolveGraphQLSubscription(t *testing.T) {
 		err := resolver.ResolveGraphQLSubscription(&ctx, plan, out)
 		assert.NoError(t, err)
 		assert.Equal(t, 3, len(out.flushed))
+		assert.Equal(t, true, out.closed)
+
 		assert.Equal(t, `{"data":{"counter":0}}`, out.flushed[0])
 		assert.Equal(t, `{"data":{"counter":1}}`, out.flushed[1])
 		assert.Equal(t, `{"data":{"counter":2}}`, out.flushed[2])
 	})
+
 }
 
 func BenchmarkResolver_ResolveNode(b *testing.B) {

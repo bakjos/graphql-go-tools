@@ -2,6 +2,7 @@ package execution
 
 import (
 	"bytes"
+	"context"
 
 	"github.com/jensneuse/pipeline/pkg/pipe"
 )
@@ -17,6 +18,6 @@ type PipelineTransformation struct {
 
 func (p *PipelineTransformation) Transform(input []byte) ([]byte, error) {
 	p.buf.Reset()
-	err := p.pipeline.Run(bytes.NewReader(input), &p.buf)
+	err := p.pipeline.Run(context.Background(), bytes.NewReader(input), &p.buf)
 	return p.buf.Bytes(), err
 }
