@@ -14,6 +14,7 @@ import (
 
 	"github.com/buger/jsonparser"
 	"github.com/cespare/xxhash/v2"
+	"github.com/jensneuse/pipeline/pkg/pipe"
 	"github.com/tidwall/gjson"
 	errors "golang.org/x/xerrors"
 
@@ -95,6 +96,7 @@ const (
 	NodeKindBoolean
 	NodeKindInteger
 	NodeKindFloat
+	NodeKindTransformation
 
 	FetchKindSingle FetchKind = iota + 1
 	FetchKindParallel
@@ -317,17 +319,18 @@ type SubscriptionDataSource interface {
 }
 
 type Resolver struct {
-	ctx               context.Context
-	dataLoaderEnabled bool
-	resultSetPool     sync.Pool
-	byteSlicesPool    sync.Pool
-	waitGroupPool     sync.Pool
-	bufPairPool       sync.Pool
-	bufPairSlicePool  sync.Pool
-	errChanPool       sync.Pool
-	hash64Pool        sync.Pool
-	dataloaderFactory *dataLoaderFactory
-	fetcher           *Fetcher
+	ctx                context.Context
+	dataLoaderEnabled  bool
+	resultSetPool      sync.Pool
+	byteSlicesPool     sync.Pool
+	transformationPool sync.Pool
+	waitGroupPool      sync.Pool
+	bufPairPool        sync.Pool
+	bufPairSlicePool   sync.Pool
+	errChanPool        sync.Pool
+	hash64Pool         sync.Pool
+	dataloaderFactory  *dataLoaderFactory
+	fetcher            *Fetcher
 }
 
 type inflightFetch struct {
@@ -352,6 +355,11 @@ func New(ctx context.Context, fetcher *Fetcher, enableDataLoader bool) *Resolver
 			New: func() interface{} {
 				slice := make([][]byte, 0, 24)
 				return &slice
+			},
+		},
+		transformationPool: sync.Pool{
+			New: func() interface{} {
+				return fastbuffer.New()
 			},
 		},
 		waitGroupPool: sync.Pool{
@@ -416,6 +424,8 @@ func (r *Resolver) resolveNode(ctx *Context, node Node, data []byte, bufPair *Bu
 	case *EmptyArray:
 		r.resolveEmptyArray(bufPair.Data)
 		return
+	case *Transformation:
+		return r.resolveTransformation(ctx, n, data, bufPair)
 	default:
 		return
 	}
@@ -867,6 +877,18 @@ func (r *Resolver) resolveArrayAsynchronous(ctx *Context, array *Array, arrayIte
 
 	arrayBuf.Data.WriteBytes(rBrack)
 	return
+}
+
+func (r *Resolver) resolveTransformation(ctx *Context, t *Transformation, data []byte, transformBuf *BufPair) error {
+	buffer := r.transformationPool.Get().(*fastbuffer.FastBuffer)
+	defer func() {
+		r.transformationPool.Put(buffer)
+	}()
+
+	if err := t.Pipeline.Run(bytes.NewReader(data), buffer); err != nil {
+		return err
+	}
+	return r.resolveNode(ctx, t.InnerValue, buffer.Bytes(), transformBuf)
 }
 
 func (r *Resolver) exportField(ctx *Context, export *FieldExport, value []byte) {
@@ -1363,6 +1385,7 @@ type Field struct {
 	SkipVariableName        string
 	IncludeDirectiveDefined bool
 	IncludeVariableName     string
+	Transformation
 }
 
 type Position struct {
@@ -1502,8 +1525,17 @@ type Stream struct {
 	PatchIndex       int
 }
 
+type Transformation struct {
+	InnerValue Node
+	Pipeline   *pipe.Pipeline
+}
+
 func (_ *Array) NodeKind() NodeKind {
 	return NodeKindArray
+}
+
+func (_ *Transformation) NodeKind() NodeKind {
+	return NodeKindTransformation
 }
 
 type GraphQLSubscription struct {
