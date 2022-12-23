@@ -9,6 +9,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/jensneuse/pipeline/pkg/pipe"
+	"github.com/jensneuse/pipeline/pkg/step"
+
 	"github.com/wundergraph/graphql-go-tools/pkg/ast"
 	"github.com/wundergraph/graphql-go-tools/pkg/astimport"
 	"github.com/wundergraph/graphql-go-tools/pkg/astvisitor"
@@ -121,6 +124,8 @@ type FieldConfiguration struct {
 	// e.g. {"response":"{\"foo\":\"bar\"}"} will be returned as {"foo":"bar"} when path is "response"
 	// This way, it is possible to resolve a JSON string as part of the response without extra String encoding of the JSON
 	UnescapeResponseJson bool
+	// A Template representing the JSON Transformation
+	Transformation string
 }
 
 type ArgumentsConfigurations []ArgumentConfiguration
@@ -567,12 +572,13 @@ func (v *Visitor) EnterField(ref int) {
 	}
 
 	path := v.resolveFieldPath(ref)
+	transformation := v.resolveTransformation(ref)
 	fieldDefinitionType := v.Definition.FieldDefinitionType(fieldDefinition)
 	bufferID, hasBuffer := v.fieldBuffers[ref]
 
 	v.currentField = &resolve.Field{
 		Name:                    fieldAliasOrName,
-		Value:                   v.resolveFieldValue(ref, fieldDefinitionType, true, path),
+		Value:                   v.resolveFieldValue(ref, fieldDefinitionType, true, path, transformation),
 		HasBuffer:               hasBuffer,
 		BufferID:                bufferID,
 		OnTypeNames:             v.resolveOnTypeNames(),
@@ -707,7 +713,7 @@ func (v *Visitor) skipField(ref int) bool {
 	return false
 }
 
-func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path []string) resolve.Node {
+func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path []string, transformation *pipe.Pipeline) resolve.Node {
 	ofType := v.Definition.Types[typeRef].OfType
 
 	fieldName := v.Operation.FieldNameString(fieldRef)
@@ -720,14 +726,21 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 
 	switch v.Definition.Types[typeRef].TypeKind {
 	case ast.TypeKindNonNull:
-		return v.resolveFieldValue(fieldRef, ofType, false, path)
+		return v.resolveFieldValue(fieldRef, ofType, false, path, transformation)
 	case ast.TypeKindList:
-		listItem := v.resolveFieldValue(fieldRef, ofType, true, nil)
-		return &resolve.Array{
+		listItem := v.resolveFieldValue(fieldRef, ofType, true, nil, transformation)
+		array := &resolve.Array{
 			Nullable: nullable,
 			Path:     path,
 			Item:     listItem,
 		}
+		if transformation != nil {
+			return &resolve.Transformation{
+				InnerValue: array,
+				Pipeline:   transformation,
+			}
+		}
+		return array
 	case ast.TypeKindNamed:
 		typeName := v.Definition.ResolveTypeNameString(typeRef)
 		typeDefinitionNode, ok := v.Definition.Index.FirstNodeByNameStr(typeName)
@@ -739,44 +752,86 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 			fieldExport := v.resolveFieldExport(fieldRef)
 			switch typeName {
 			case "String":
-				return &resolve.String{
+				value := &resolve.String{
 					Path:                 path,
 					Nullable:             nullable,
 					Export:               fieldExport,
 					UnescapeResponseJson: unescapeResponseJson,
 				}
+				if transformation != nil {
+					return &resolve.Transformation{
+						InnerValue: value,
+						Pipeline:   transformation,
+					}
+				}
+				return value
 			case "Boolean":
-				return &resolve.Boolean{
+				value := &resolve.Boolean{
 					Path:     path,
 					Nullable: nullable,
 					Export:   fieldExport,
 				}
+				if transformation != nil {
+					return &resolve.Transformation{
+						InnerValue: value,
+						Pipeline:   transformation,
+					}
+				}
+				return value
 			case "Int":
-				return &resolve.Integer{
+				value := &resolve.Integer{
 					Path:     path,
 					Nullable: nullable,
 					Export:   fieldExport,
 				}
+				if transformation != nil {
+					return &resolve.Transformation{
+						InnerValue: value,
+						Pipeline:   transformation,
+					}
+				}
+				return value
 			case "Float":
-				return &resolve.Float{
+				value := &resolve.Float{
 					Path:     path,
 					Nullable: nullable,
 					Export:   fieldExport,
 				}
+				if transformation != nil {
+					return &resolve.Transformation{
+						InnerValue: value,
+						Pipeline:   transformation,
+					}
+				}
+				return value
 			default:
-				return &resolve.String{
+				value := &resolve.String{
 					Path:                 path,
 					Nullable:             nullable,
 					Export:               fieldExport,
 					UnescapeResponseJson: unescapeResponseJson,
 				}
+				if transformation != nil {
+					return &resolve.Transformation{
+						InnerValue: value,
+						Pipeline:   transformation,
+					}
+				}
+				return value
 			}
 		case ast.NodeKindEnumTypeDefinition:
-			return &resolve.String{
+			value := &resolve.String{
 				Path:                 path,
 				Nullable:             nullable,
 				UnescapeResponseJson: unescapeResponseJson,
 			}
+			if transformation != nil {
+				return &resolve.Transformation{
+					InnerValue: value,
+					Pipeline:   transformation,
+				}
+			}
+			return value
 		case ast.NodeKindObjectTypeDefinition, ast.NodeKindInterfaceTypeDefinition, ast.NodeKindUnionTypeDefinition:
 			object := &resolve.Object{
 				Nullable:             nullable,
@@ -791,12 +846,32 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 					fields:     &object.Fields,
 				})
 			})
+			if transformation != nil {
+				return &resolve.Transformation{
+					InnerValue: object,
+					Pipeline:   transformation,
+				}
+			}
 			return object
 		default:
-			return &resolve.Null{}
+			value := &resolve.Null{}
+			if transformation != nil {
+				return &resolve.Transformation{
+					InnerValue: value,
+					Pipeline:   transformation,
+				}
+			}
+			return value
 		}
 	default:
-		return &resolve.Null{}
+		value := &resolve.Null{}
+		if transformation != nil {
+			return &resolve.Transformation{
+				InnerValue: value,
+				Pipeline:   transformation,
+			}
+		}
+		return value
 	}
 }
 
@@ -959,6 +1034,25 @@ func (v *Visitor) resolveFieldPath(ref int) []string {
 	}
 
 	return []string{fieldName}
+}
+
+func (v *Visitor) resolveTransformation(ref int) *pipe.Pipeline {
+	typeName := v.Walker.EnclosingTypeDefinition.NameString(v.Definition)
+	fieldName := v.Operation.FieldNameUnsafeString(ref)
+
+	for i := range v.Config.Fields {
+		if v.Config.Fields[i].TypeName == typeName && v.Config.Fields[i].FieldName == fieldName {
+			if len(v.Config.Fields[i].Transformation) > 0 {
+				step, err := step.NewJSON(v.Config.Fields[i].Transformation)
+				if err == nil {
+					return &pipe.Pipeline{Steps: []pipe.Step{step}}
+				}
+
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 func (v *Visitor) EnterDocument(operation, definition *ast.Document) {
