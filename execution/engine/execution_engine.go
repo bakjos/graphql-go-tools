@@ -103,6 +103,12 @@ func WithRequestTraceOptions(options resolve.TraceOptions) ExecutionOptions {
 	}
 }
 
+func WithAuthorizer(authorizer resolve.Authorizer) ExecutionOptions {
+	return func(ctx *internalExecutionContext) {
+		ctx.resolveContext.SetAuthorizer(authorizer)
+	}
+}
+
 func NewExecutionEngine(ctx context.Context, logger abstractlogger.Logger, engineConfig Configuration, resolverOptions resolve.ResolverOptions) (*ExecutionEngine, error) {
 	executionPlanCache, err := lru.New(1024)
 	if err != nil {
