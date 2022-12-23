@@ -8,3 +8,5 @@ retract (
 	v0.13.2
 	v0.0.1
 )
+
+replace github.com/jensneuse/pipeline => github.com/bakjos/pipeline v0.0.2
