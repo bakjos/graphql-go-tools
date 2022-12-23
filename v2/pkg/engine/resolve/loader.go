@@ -630,7 +630,9 @@ func (l *Loader) mergeResult(fetchItem *FetchItem, res *result, items []*astjson
 		if responseData.Type() != astjson.TypeObject {
 			return l.renderErrorsFailedToFetch(fetchItem, res, invalidGraphQLResponseShape)
 		}
-		l.resolvable.data = responseData
+		if l.resolvable.data == nil {
+			l.resolvable.data = responseData
+		}
 		return nil
 	}
 	if len(items) == 1 && res.batchStats == nil {
@@ -648,7 +650,11 @@ func (l *Loader) mergeResult(fetchItem *FetchItem, res *result, items []*astjson
 		return nil
 	}
 	batch := responseData.GetArray()
-	if batch == nil {
+	if len(batch) == 0 {
+		return nil
+	}
+
+	if len(batch) != len(items) {
 		return l.renderErrorsFailedToFetch(fetchItem, res, invalidGraphQLResponseShape)
 	}
 
