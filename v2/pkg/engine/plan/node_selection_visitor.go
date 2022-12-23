@@ -145,9 +145,7 @@ func (c *nodeSelectionVisitor) EnterDocument(operation, definition *ast.Document
 
 	c.operation, c.definition = operation, definition
 
-	if c.skipFieldsRefs == nil {
-		c.skipFieldsRefs = make([]int, 0, 8)
-	}
+	c.skipFieldsRefs = make([]int, 0, 8)
 
 	c.persistedRewrittenFieldRefs = make(map[int]struct{})
 	c.visitedFieldsAbstractChecks = make(map[int]struct{})
