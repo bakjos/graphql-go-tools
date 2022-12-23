@@ -421,7 +421,10 @@ func (r *Resolver) executeSubscriptionUpdate(resolveCtx *Context, sub *sub, shar
 	t := newTools(r.options, r.allowedErrorExtensionFields, r.allowedErrorFields)
 
 	if err := t.resolvable.InitSubscription(resolveCtx, input, sub.resolve.Trigger.PostProcessing); err != nil {
-		r.asyncErrorWriter.WriteError(resolveCtx, err, sub.resolve.Response, sub.writer)
+		if r.asyncErrorWriter != nil {
+			r.asyncErrorWriter.WriteError(resolveCtx, err, sub.resolve.Response, sub.writer)
+		}
+
 		if r.options.Debug {
 			fmt.Printf("resolver:trigger:subscription:init:failed:%d\n", sub.id.SubscriptionID)
 		}
@@ -432,7 +435,9 @@ func (r *Resolver) executeSubscriptionUpdate(resolveCtx *Context, sub *sub, shar
 	}
 
 	if err := t.loader.LoadGraphQLResponseData(resolveCtx, sub.resolve.Response, t.resolvable); err != nil {
-		r.asyncErrorWriter.WriteError(resolveCtx, err, sub.resolve.Response, sub.writer)
+		if r.asyncErrorWriter != nil {
+			r.asyncErrorWriter.WriteError(resolveCtx, err, sub.resolve.Response, sub.writer)
+		}
 		if r.options.Debug {
 			fmt.Printf("resolver:trigger:subscription:load:failed:%d\n", sub.id.SubscriptionID)
 		}
@@ -443,7 +448,9 @@ func (r *Resolver) executeSubscriptionUpdate(resolveCtx *Context, sub *sub, shar
 	}
 
 	if err := t.resolvable.Resolve(resolveCtx.ctx, sub.resolve.Response.Data, sub.resolve.Response.Fetches, sub.writer); err != nil {
-		r.asyncErrorWriter.WriteError(resolveCtx, err, sub.resolve.Response, sub.writer)
+		if r.asyncErrorWriter != nil {
+			r.asyncErrorWriter.WriteError(resolveCtx, err, sub.resolve.Response, sub.writer)
+		}
 		if r.options.Debug {
 			fmt.Printf("resolver:trigger:subscription:resolve:failed:%d\n", sub.id.SubscriptionID)
 		}
@@ -661,7 +668,10 @@ func (r *Resolver) handleAddSubscription(triggerID uint64, add *addSubscription)
 			if r.options.Debug {
 				fmt.Printf("resolver:trigger:failed:%d\n", triggerID)
 			}
-			r.asyncErrorWriter.WriteError(add.ctx, err, add.resolve.Response, add.writer)
+
+			if r.asyncErrorWriter != nil {
+				r.asyncErrorWriter.WriteError(add.ctx, err, add.resolve.Response, add.writer)
+			}
 			_ = r.emitTriggerClose(triggerID)
 			return
 		}
@@ -782,7 +792,9 @@ func (r *Resolver) handleTriggerUpdate(id uint64, data []byte) {
 		}
 		skip, err := s.resolve.Filter.SkipEvent(c, data, r.triggerUpdateBuf)
 		if err != nil {
-			r.asyncErrorWriter.WriteError(c, err, s.resolve.Response, s.writer)
+			if r.asyncErrorWriter != nil {
+				r.asyncErrorWriter.WriteError(c, err, s.resolve.Response, s.writer)
+			}
 			continue
 		}
 		if skip {
