@@ -336,7 +336,7 @@ type DataSource interface {
 }
 
 type SubscriptionDataSource interface {
-	Start(ctx context.Context, input []byte, next chan<- []byte) error
+	Start(ctx context.Context, input []byte, next chan<- []byte, complete chan<- bool) error
 }
 
 type Resolver struct {
@@ -595,7 +595,9 @@ func (r *Resolver) ResolveGraphQLSubscription(ctx *Context, subscription *GraphQ
 		return writeAndFlush(writer, msg)
 	}
 
-	err = subscription.Trigger.Source.Start(c, subscriptionInput, next)
+	completed := make(chan bool)
+
+	err = subscription.Trigger.Source.Start(c, subscriptionInput, next, completed)
 	if err != nil {
 		if errors.Is(err, ErrUnableToResolve) {
 			msg := []byte(`{"errors":[{"message":"unable to resolve"}]}`)
@@ -610,6 +612,11 @@ func (r *Resolver) ResolveGraphQLSubscription(ctx *Context, subscription *GraphQ
 	for {
 		select {
 		case <-resolverDone:
+			return nil
+		case <-completed:
+			if close, ok := writer.(io.WriteCloser); ok {
+				return close.Close()
+			}
 			return nil
 		case data, ok := <-next:
 			if !ok {
