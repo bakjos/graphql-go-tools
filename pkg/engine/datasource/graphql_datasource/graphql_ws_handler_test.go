@@ -74,7 +74,7 @@ func TestWebSocketSubscriptionClientInitIncludeKA_GQLWS(t *testing.T) {
 		Body: GraphQLBody{
 			Query: `subscription {messageAdded(roomName: "room"){text}}`,
 		},
-	}, next)
+	}, next, nil)
 	assertion.NoError(err)
 	first := <-next
 	second := <-next
@@ -137,7 +137,7 @@ func TestWebsocketSubscriptionClient_GQLWS(t *testing.T) {
 		Body: GraphQLBody{
 			Query: `subscription {messageAdded(roomName: "room"){text}}`,
 		},
-	}, next)
+	}, next, nil)
 	assert.NoError(t, err)
 	first := <-next
 	second := <-next
@@ -196,7 +196,7 @@ func TestWebsocketSubscriptionClientErrorArray(t *testing.T) {
 		Body: GraphQLBody{
 			Query: `subscription {messageAdded(roomNam: "room"){text}}`,
 		},
-	}, next)
+	}, next, nil)
 	assert.NoError(t, err)
 	message := <-next
 	assert.Equal(t, `{"errors":[{"message":"error"},{"message":"error"}]}`, string(message))
@@ -249,7 +249,7 @@ func TestWebsocketSubscriptionClientErrorObject(t *testing.T) {
 		Body: GraphQLBody{
 			Query: `subscription {messageAdded(roomNam: "room"){text}}`,
 		},
-	}, next)
+	}, next, nil)
 	assert.NoError(t, err)
 	message := <-next
 	assert.Equal(t, `{"errors":[{"message":"error"}]}`, string(message))
@@ -310,7 +310,7 @@ func TestWebsocketSubscriptionClient_GQLWS_Upstream_Dies(t *testing.T) {
 		Body: GraphQLBody{
 			Query: `subscription {messageAdded(roomName: "room"){text}}`,
 		},
-	}, next)
+	}, next, nil)
 	assert.NoError(t, err)
 	first := <-next
 	assert.Equal(t, `{"data":{"messageAdded":{"text":"first"}}}`, string(first))

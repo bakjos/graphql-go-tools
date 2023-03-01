@@ -47,9 +47,12 @@ func (h *gqlSSEConnectionHandler) StartBlocking(sub Subscription) {
 		close(dataCh)
 		close(errCh)
 		close(sub.next)
+		if sub.complete != nil {
+			close(sub.complete)
+		}
 	}()
 
-	go h.subscribe(reqCtx, sub, dataCh, errCh)
+	go h.subscribe(reqCtx, sub, dataCh, errCh, sub.complete)
 
 	for {
 		select {
@@ -64,7 +67,7 @@ func (h *gqlSSEConnectionHandler) StartBlocking(sub Subscription) {
 	}
 }
 
-func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscription, dataCh, errCh chan []byte) {
+func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscription, dataCh, errCh chan []byte, complete chan<- bool) {
 	// if we used the downstream context, we got a panic if the downstream client disconnects immediately after the request was sent
 	// this happens, e.g. with React strict mode which renders the component twice
 	// to solve the issue, we use a separate context for the origin request
@@ -117,8 +120,9 @@ func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscriptio
 			}
 
 			h.log.Error("failed to read event", log.Error(err))
-
-			errCh <- []byte(internalError)
+			if ctx.Err() == nil {
+				errCh <- []byte(internalError)
+			}
 			return
 		}
 
@@ -149,6 +153,9 @@ func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscriptio
 
 				switch {
 				case bytes.Equal(event, eventTypeComplete):
+					if complete != nil {
+						complete <- true
+					}
 					return
 				case bytes.Equal(event, eventTypeNext):
 					continue
