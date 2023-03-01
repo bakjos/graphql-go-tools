@@ -52,7 +52,9 @@ func (h *gqlSSEConnectionHandler) StartBlocking(sub Subscription) {
 		}
 	}()
 
-	go h.subscribe(reqCtx, sub, dataCh, errCh, sub.complete)
+	complete := make(chan bool)
+
+	go h.subscribe(reqCtx, sub, dataCh, errCh, complete)
 
 	for {
 		select {
@@ -62,6 +64,11 @@ func (h *gqlSSEConnectionHandler) StartBlocking(sub Subscription) {
 			sub.next <- err
 			return
 		case <-reqCtx.Done():
+			return
+		case <-complete:
+			if sub.complete != nil {
+				sub.complete <- true
+			}
 			return
 		}
 	}
@@ -116,6 +123,9 @@ func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscriptio
 		msg, err := reader.ReadEvent()
 		if err != nil {
 			if err == io.EOF {
+				if complete != nil {
+					complete <- true
+				}
 				return
 			}
 
