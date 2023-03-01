@@ -1614,7 +1614,7 @@ func TestResolver_ResolveNode(t *testing.T) {
 					},
 				},
 			},
-		}, Context{Context: context.Background()}, `{"firstName":"John","lastName":"Doe","name":{"fullName":"John Doe"}}`
+		}, Context{ctx: context.Background()}, `{"firstName":"John","lastName":"Doe","name":{"fullName":"John Doe"}}`
 	}))
 	t.Run("with unescape json enabled", func(t *testing.T) {
 		t.Run("json object within a string", testFn(false, false, func(t *testing.T, ctrl *gomock.Controller) (node Node, ctx Context, expectedOutput string) {
@@ -4169,6 +4169,7 @@ func TestResolver_WithHeader(t *testing.T) {
 type TestFlushWriter struct {
 	flushed []string
 	buf     bytes.Buffer
+	closed  bool
 }
 
 func (t *TestFlushWriter) Write(p []byte) (n int, err error) {
@@ -4178,6 +4179,11 @@ func (t *TestFlushWriter) Write(p []byte) (n int, err error) {
 func (t *TestFlushWriter) Flush() {
 	t.flushed = append(t.flushed, t.buf.String())
 	t.buf.Reset()
+}
+
+func (t *TestFlushWriter) Close() error {
+	t.closed = true
+	return nil
 }
 
 func FakeStream(cancelFunc func(), messageFunc func(count int) (message string, ok bool)) *_fakeStream {
@@ -4192,12 +4198,13 @@ type _fakeStream struct {
 	messageFunc func(counter int) (message string, ok bool)
 }
 
-func (f *_fakeStream) Start(ctx context.Context, input []byte, next chan<- []byte) error {
+func (f *_fakeStream) Start(ctx context.Context, input []byte, next chan<- []byte, complete chan<- bool) error {
 	go func() {
 		time.Sleep(time.Millisecond)
 		count := 0
 		for {
 			if count == 3 {
+				complete <- true
 				f.cancel()
 				return
 			}
@@ -4295,6 +4302,8 @@ func TestResolver_ResolveGraphQLSubscription(t *testing.T) {
 		err := resolver.ResolveGraphQLSubscription(&ctx, plan, out)
 		assert.NoError(t, err)
 		assert.Equal(t, 3, len(out.flushed))
+		assert.Equal(t, true, out.closed)
+
 		assert.Equal(t, `{"data":{"counter":0}}`, out.flushed[0])
 		assert.Equal(t, `{"data":{"counter":1}}`, out.flushed[1])
 		assert.Equal(t, `{"data":{"counter":2}}`, out.flushed[2])
