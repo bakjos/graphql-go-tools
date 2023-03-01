@@ -230,7 +230,7 @@ func TestKafkaDataSource_Subscription_Start(t *testing.T) {
 
 	t.Run("should return error when input is invalid", func(t *testing.T) {
 		source := SubscriptionSource{client: FailingSubscriptionClient{}}
-		err := source.Start(context.Background(), []byte(`{"broker_addresses":"",topic":"","group_id":""}`), nil)
+		err := source.Start(context.Background(), []byte(`{"broker_addresses":"",topic":"","group_id":""}`), nil, nil)
 		assert.Error(t, err)
 	})
 
@@ -257,7 +257,7 @@ func TestKafkaDataSource_Subscription_Start(t *testing.T) {
 		}
 		optionsBytes, err := json.Marshal(options)
 		require.NoError(t, err)
-		err = source.Start(subscriptionLifecycle, optionsBytes, next)
+		err = source.Start(subscriptionLifecycle, optionsBytes, next, nil)
 		require.NoError(t, err)
 
 		testMessageKey := sarama.StringEncoder("test.message.key")

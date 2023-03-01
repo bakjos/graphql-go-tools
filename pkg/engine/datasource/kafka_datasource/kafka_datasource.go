@@ -62,7 +62,7 @@ type SubscriptionSource struct {
 	client GraphQLSubscriptionClient
 }
 
-func (s *SubscriptionSource) Start(ctx context.Context, input []byte, next chan<- []byte) error {
+func (s *SubscriptionSource) Start(ctx context.Context, input []byte, next chan<- []byte, _ chan<- bool) error {
 	var options GraphQLSubscriptionOptions
 	err := json.Unmarshal(input, &options)
 	if err != nil {
