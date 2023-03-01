@@ -614,8 +614,8 @@ func (r *Resolver) ResolveGraphQLSubscription(ctx *Context, subscription *GraphQ
 		case <-resolverDone:
 			return nil
 		case <-completed:
-			if f, ok := writer.(CompleteFlushWriter); ok {
-				return f.Complete()
+			if close, ok := writer.(io.WriteCloser); ok {
+				return close.Close()
 			}
 			return nil
 		case data, ok := <-next:
@@ -1672,10 +1672,6 @@ type GraphQLSubscriptionTrigger struct {
 type FlushWriter interface {
 	io.Writer
 	Flush()
-}
-
-type CompleteFlushWriter interface {
-	Complete() error
 }
 
 type GraphQLResponse struct {
