@@ -811,6 +811,7 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 						Pipeline:   transformation,
 					}
 				}
+				return value
 			case "BigInt":
 				value := &resolve.BigInt{
 					Path:     path,
