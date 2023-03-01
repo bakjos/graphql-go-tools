@@ -68,7 +68,7 @@ func (e *EngineResultWriter) Flush() {
 	e.Reset()
 }
 
-func (e *EngineResultWriter) Close() error {
+func (e *EngineResultWriter) Complete() error {
 	if e.completeCallback != nil {
 		e.completeCallback()
 	}
