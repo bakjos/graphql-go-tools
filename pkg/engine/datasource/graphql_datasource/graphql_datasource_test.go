@@ -3589,7 +3589,9 @@ func TestGraphQLDataSource(t *testing.T) {
 											IsTypeName: true,
 										},
 									},
-								}}},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -7741,7 +7743,7 @@ var errSubscriptionClientFail = errors.New("subscription client fail error")
 
 type FailingSubscriptionClient struct{}
 
-func (f FailingSubscriptionClient) Subscribe(_ context.Context, _ GraphQLSubscriptionOptions, _ chan<- []byte) error {
+func (f FailingSubscriptionClient) Subscribe(_ context.Context, _ GraphQLSubscriptionOptions, _ chan<- []byte, _ chan<- bool) error {
 	return errSubscriptionClientFail
 }
 
@@ -7788,13 +7790,13 @@ func TestSubscriptionSource_Start(t *testing.T) {
 
 	t.Run("should return error when input is invalid", func(t *testing.T) {
 		source := SubscriptionSource{client: FailingSubscriptionClient{}}
-		err := source.Start(context.Background(), []byte(`{"url": "", "body": "", "header": null}`), nil)
+		err := source.Start(context.Background(), []byte(`{"url": "", "body": "", "header": null}`), nil, nil)
 		assert.Error(t, err)
 	})
 
 	t.Run("should return error when subscription client returns an error", func(t *testing.T) {
 		source := SubscriptionSource{client: FailingSubscriptionClient{}}
-		err := source.Start(context.Background(), []byte(`{"url": "", "body": {}, "header": null}`), nil)
+		err := source.Start(context.Background(), []byte(`{"url": "", "body": {}, "header": null}`), nil, nil)
 		assert.Error(t, err)
 		assert.Equal(t, resolve.ErrUnableToResolve, err)
 	})
@@ -7806,7 +7808,7 @@ func TestSubscriptionSource_Start(t *testing.T) {
 
 		source := newSubscriptionSource(ctx.Context())
 		chatSubscriptionOptions := chatServerSubscriptionOptions(t, `{"variables": {}, "extensions": {}, "operationName": "LiveMessages", "query": "subscription LiveMessages { messageAdded(roomName: "#test") { text createdBy } }"}`)
-		err := source.Start(ctx.Context(), chatSubscriptionOptions, next)
+		err := source.Start(ctx.Context(), chatSubscriptionOptions, next, nil)
 		require.ErrorIs(t, err, resolve.ErrUnableToResolve)
 	})
 
@@ -7817,7 +7819,7 @@ func TestSubscriptionSource_Start(t *testing.T) {
 
 		source := newSubscriptionSource(ctx.Context())
 		chatSubscriptionOptions := chatServerSubscriptionOptions(t, `{"variables": {}, "extensions": {}, "operationName": "LiveMessages", "query": "subscription LiveMessages { messageAdded(roomNam: \"#test\") { text createdBy } }"}`)
-		err := source.Start(ctx.Context(), chatSubscriptionOptions, next)
+		err := source.Start(ctx.Context(), chatSubscriptionOptions, next, nil)
 		require.NoError(t, err)
 
 		msg, ok := <-next
@@ -7835,7 +7837,7 @@ func TestSubscriptionSource_Start(t *testing.T) {
 
 		source := newSubscriptionSource(resolverLifecycle)
 		chatSubscriptionOptions := chatServerSubscriptionOptions(t, `{"variables": {}, "extensions": {}, "operationName": "LiveMessages", "query": "subscription LiveMessages { messageAdded(roomName: \"#test\") { text createdBy } }"}`)
-		err := source.Start(subscriptionLifecycle, chatSubscriptionOptions, next)
+		err := source.Start(subscriptionLifecycle, chatSubscriptionOptions, next, nil)
 		require.NoError(t, err)
 
 		username := "myuser"
@@ -7856,7 +7858,7 @@ func TestSubscriptionSource_Start(t *testing.T) {
 
 		source := newSubscriptionSource(ctx.Context())
 		chatSubscriptionOptions := chatServerSubscriptionOptions(t, `{"variables": {}, "extensions": {}, "operationName": "LiveMessages", "query": "subscription LiveMessages { messageAdded(roomName: \"#test\") { text createdBy } }"}`)
-		err := source.Start(ctx.Context(), chatSubscriptionOptions, next)
+		err := source.Start(ctx.Context(), chatSubscriptionOptions, next, nil)
 		require.NoError(t, err)
 
 		username := "myuser"
@@ -7918,7 +7920,7 @@ func TestSubscription_GTWS_SubProtocol(t *testing.T) {
 
 		source := newSubscriptionSource(ctx.Context())
 		chatSubscriptionOptions := chatServerSubscriptionOptions(t, `{"variables": {}, "extensions": {}, "operationName": "LiveMessages", "query": "subscription LiveMessages { messageAdded(roomNam: \"#test\") { text createdBy } }"}`)
-		err := source.Start(ctx.Context(), chatSubscriptionOptions, next)
+		err := source.Start(ctx.Context(), chatSubscriptionOptions, next, nil)
 		require.NoError(t, err)
 
 		msg, ok := <-next
@@ -7936,7 +7938,7 @@ func TestSubscription_GTWS_SubProtocol(t *testing.T) {
 
 		source := newSubscriptionSource(resolverLifecycle)
 		chatSubscriptionOptions := chatServerSubscriptionOptions(t, `{"variables": {}, "extensions": {}, "operationName": "LiveMessages", "query": "subscription LiveMessages { messageAdded(roomName: \"#test\") { text createdBy } }"}`)
-		err := source.Start(subscriptionLifecycle, chatSubscriptionOptions, next)
+		err := source.Start(subscriptionLifecycle, chatSubscriptionOptions, next, nil)
 		require.NoError(t, err)
 
 		username := "myuser"
@@ -7957,7 +7959,7 @@ func TestSubscription_GTWS_SubProtocol(t *testing.T) {
 
 		source := newSubscriptionSource(ctx.Context())
 		chatSubscriptionOptions := chatServerSubscriptionOptions(t, `{"variables": {}, "extensions": {}, "operationName": "LiveMessages", "query": "subscription LiveMessages { messageAdded(roomName: \"#test\") { text createdBy } }"}`)
-		err := source.Start(ctx.Context(), chatSubscriptionOptions, next)
+		err := source.Start(ctx.Context(), chatSubscriptionOptions, next, nil)
 		require.NoError(t, err)
 
 		username := "myuser"
@@ -8337,7 +8339,6 @@ func BenchmarkFederationBatching(b *testing.B) {
 								},
 							},
 							{
-
 								HasBuffer: true,
 								BufferID:  1,
 								Name:      []byte("reviews"),
