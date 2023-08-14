@@ -126,6 +126,8 @@ type FieldConfiguration struct {
 	UnescapeResponseJson bool
 	// A pipeline definition for the field
 	Pipeline *pipe.Pipeline
+	//Whether to resolve the array asynchronously or not
+	ResolveAsynchronous bool
 }
 
 type ArgumentsConfigurations []ArgumentConfiguration
@@ -572,13 +574,12 @@ func (v *Visitor) EnterField(ref int) {
 	}
 
 	path := v.resolveFieldPath(ref)
-	transformation := v.resolveTransformation(ref)
 	fieldDefinitionType := v.Definition.FieldDefinitionType(fieldDefinition)
 	bufferID, hasBuffer := v.fieldBuffers[ref]
 
 	v.currentField = &resolve.Field{
 		Name:                    fieldAliasOrName,
-		Value:                   v.resolveFieldValue(ref, fieldDefinitionType, true, path, transformation),
+		Value:                   v.resolveFieldValue(ref, fieldDefinitionType, true, path),
 		HasBuffer:               hasBuffer,
 		BufferID:                bufferID,
 		OnTypeNames:             v.resolveOnTypeNames(),
@@ -713,26 +714,31 @@ func (v *Visitor) skipField(ref int) bool {
 	return false
 }
 
-func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path []string, transformation *pipe.Pipeline) resolve.Node {
+func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path []string) resolve.Node {
 	ofType := v.Definition.Types[typeRef].OfType
 
 	fieldName := v.Operation.FieldNameString(fieldRef)
 	enclosingTypeName := v.Walker.EnclosingTypeDefinition.NameString(v.Definition)
 	fieldConfig := v.Config.Fields.ForTypeField(enclosingTypeName, fieldName)
 	unescapeResponseJson := false
+	resolveAsync := false
+	var transformation *pipe.Pipeline
 	if fieldConfig != nil {
 		unescapeResponseJson = fieldConfig.UnescapeResponseJson
+		resolveAsync = fieldConfig.ResolveAsynchronous
+		transformation = fieldConfig.Pipeline
 	}
 
 	switch v.Definition.Types[typeRef].TypeKind {
 	case ast.TypeKindNonNull:
-		return v.resolveFieldValue(fieldRef, ofType, false, path, transformation)
+		return v.resolveFieldValue(fieldRef, ofType, false, path)
 	case ast.TypeKindList:
-		listItem := v.resolveFieldValue(fieldRef, ofType, true, nil, transformation)
+		listItem := v.resolveFieldValue(fieldRef, ofType, true, nil)
 		array := &resolve.Array{
-			Nullable: nullable,
-			Path:     path,
-			Item:     listItem,
+			Nullable:            nullable,
+			Path:                path,
+			Item:                listItem,
+			ResolveAsynchronous: resolveAsync,
 		}
 		if transformation != nil {
 			return &resolve.Transformation{
@@ -1054,21 +1060,6 @@ func (v *Visitor) resolveFieldPath(ref int) []string {
 	}
 
 	return []string{fieldName}
-}
-
-func (v *Visitor) resolveTransformation(ref int) *pipe.Pipeline {
-	typeName := v.Walker.EnclosingTypeDefinition.NameString(v.Definition)
-	fieldName := v.Operation.FieldNameUnsafeString(ref)
-
-	for i := range v.Config.Fields {
-		if v.Config.Fields[i].TypeName == typeName && v.Config.Fields[i].FieldName == fieldName {
-			if v.Config.Fields[i].Pipeline != nil {
-				return v.Config.Fields[i].Pipeline
-			}
-			return nil
-		}
-	}
-	return nil
 }
 
 func (v *Visitor) EnterDocument(operation, definition *ast.Document) {
