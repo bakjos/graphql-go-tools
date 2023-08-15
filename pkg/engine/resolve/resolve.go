@@ -596,6 +596,22 @@ func (r *Resolver) ResolveGraphQLSubscription(ctx *Context, subscription *GraphQ
 	}
 
 	completed := make(chan bool)
+	heartbeat := make(chan bool)
+	duration := subscription.Trigger.ProcessResponseConfig.HeartBeatInterval
+	if duration > 0 {
+		go func() {
+			for {
+				select {
+				case <-resolverDone:
+					{
+						return
+					}
+				case <-time.After(duration):
+					heartbeat <- true
+				}
+			}
+		}()
+	}
 
 	err = subscription.Trigger.Source.Start(c, subscriptionInput, next, completed)
 	if err != nil {
@@ -609,6 +625,11 @@ func (r *Resolver) ResolveGraphQLSubscription(ctx *Context, subscription *GraphQ
 	responseBuf := r.getBufPair()
 	defer r.freeBufPair(responseBuf)
 
+	heartbeatMessage := subscription.Trigger.ProcessResponseConfig.HeartBeatMessage
+	if len(heartbeatMessage) == 0 {
+		heartbeatMessage = []byte("\\n")
+	}
+
 	for {
 		select {
 		case <-resolverDone:
@@ -618,6 +639,12 @@ func (r *Resolver) ResolveGraphQLSubscription(ctx *Context, subscription *GraphQ
 				return close.Close()
 			}
 			return nil
+		case <-heartbeat:
+			_, err = writer.Write(heartbeatMessage)
+			if err != nil {
+				return nil
+			}
+			writer.Flush()
 		case data, ok := <-next:
 			if !ok {
 				return nil
@@ -1533,6 +1560,8 @@ type SingleFetch struct {
 type ProcessResponseConfig struct {
 	ExtractGraphqlResponse    bool
 	ExtractFederationEntities bool
+	HeartBeatInterval         time.Duration
+	HeartBeatMessage          []byte
 }
 
 func (_ *SingleFetch) FetchKind() FetchKind {

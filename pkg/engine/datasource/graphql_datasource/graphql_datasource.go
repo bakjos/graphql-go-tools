@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/buger/jsonparser"
 	"github.com/tidwall/sjson"
@@ -240,9 +241,11 @@ type FederationConfiguration struct {
 }
 
 type SubscriptionConfiguration struct {
-	URL           string
-	UseSSE        bool
-	SSEMethodPost bool
+	URL                  string
+	UseSSE               bool
+	SSEMethodPost        bool
+	SSEHeartBeatInterval time.Duration
+	SSEHeartBeatMessage  []byte
 }
 
 type FetchConfiguration struct {
@@ -326,10 +329,17 @@ func (p *Planner) ConfigureSubscription() plan.SubscriptionConfiguration {
 	input := httpclient.SetInputBodyWithPath(nil, p.upstreamVariables, "variables")
 	input = httpclient.SetInputBodyWithPath(input, p.printOperation(), "query")
 	input = httpclient.SetInputURL(input, []byte(p.config.Subscription.URL))
+	var heartbeatInterval time.Duration
+	var heartbeatMessage []byte
 	if p.config.Subscription.UseSSE {
 		input = httpclient.SetInputFlag(input, httpclient.USESSE)
 		if p.config.Subscription.SSEMethodPost {
 			input = httpclient.SetInputFlag(input, httpclient.SSEMETHODPOST)
+		}
+		heartbeatInterval = p.config.Subscription.SSEHeartBeatInterval
+		heartbeatMessage = []byte(":\\n\\n")
+		if len(p.config.Subscription.SSEHeartBeatMessage) > 0 {
+			heartbeatMessage = p.config.Subscription.SSEHeartBeatMessage
 		}
 	}
 
@@ -347,6 +357,8 @@ func (p *Planner) ConfigureSubscription() plan.SubscriptionConfiguration {
 		ProcessResponseConfig: resolve.ProcessResponseConfig{
 			ExtractGraphqlResponse:    true,
 			ExtractFederationEntities: false,
+			HeartBeatMessage:          heartbeatMessage,
+			HeartBeatInterval:         heartbeatInterval,
 		},
 	}
 }

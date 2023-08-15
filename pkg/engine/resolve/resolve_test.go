@@ -4222,11 +4222,11 @@ func (f *_fakeStream) Start(ctx context.Context, input []byte, next chan<- []byt
 
 func TestResolver_ResolveGraphQLSubscription(t *testing.T) {
 
-	setup := func(ctx context.Context, stream SubscriptionDataSource) (*Resolver, *GraphQLSubscription, *TestFlushWriter) {
+	setup := func(ctx context.Context, stream SubscriptionDataSource, heartbeatTimeout time.Duration) (*Resolver, *GraphQLSubscription, *TestFlushWriter) {
 		plan := &GraphQLSubscription{
 			Trigger: GraphQLSubscriptionTrigger{
 				Source:                stream,
-				ProcessResponseConfig: ProcessResponseConfig{ExtractGraphqlResponse: true},
+				ProcessResponseConfig: ProcessResponseConfig{ExtractGraphqlResponse: true, HeartBeatInterval: heartbeatTimeout, HeartBeatMessage: []byte("hb")},
 			},
 			Response: &GraphQLResponse{
 				Data: &Object{
@@ -4257,7 +4257,7 @@ func TestResolver_ResolveGraphQLSubscription(t *testing.T) {
 			return `{"errors":[{"message":"Validation error occurred","locations":[{"line":1,"column":1}],"extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}}],"data":null}`, false
 		})
 
-		resolver, plan, out := setup(c, fakeStream)
+		resolver, plan, out := setup(c, fakeStream, 0)
 
 		ctx := Context{
 			ctx: c,
@@ -4273,7 +4273,7 @@ func TestResolver_ResolveGraphQLSubscription(t *testing.T) {
 		c, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		resolver, plan, out := setup(c, nil)
+		resolver, plan, out := setup(c, nil, 0)
 
 		ctx := Context{
 			ctx: c,
@@ -4293,7 +4293,7 @@ func TestResolver_ResolveGraphQLSubscription(t *testing.T) {
 			return fmt.Sprintf(`{"data":{"counter":%d}}`, count), true
 		})
 
-		resolver, plan, out := setup(c, fakeStream)
+		resolver, plan, out := setup(c, fakeStream, 0)
 
 		ctx := Context{
 			ctx: c,
@@ -4307,6 +4307,37 @@ func TestResolver_ResolveGraphQLSubscription(t *testing.T) {
 		assert.Equal(t, `{"data":{"counter":0}}`, out.flushed[0])
 		assert.Equal(t, `{"data":{"counter":1}}`, out.flushed[1])
 		assert.Equal(t, `{"data":{"counter":2}}`, out.flushed[2])
+	})
+
+	t.Run("should send the heartbeats when enabled", func(t *testing.T) {
+		c, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		fakeStream := FakeStream(cancel, func(count int) (message string, ok bool) {
+			time.Sleep(20 * time.Millisecond)
+			return fmt.Sprintf(`{"data":{"counter":%d}}`, count), true
+		})
+
+		resolver, plan, out := setup(c, fakeStream, 10*time.Millisecond)
+
+		ctx := Context{
+			ctx: c,
+		}
+
+		err := resolver.ResolveGraphQLSubscription(&ctx, plan, out)
+
+		assert.NoError(t, err)
+		assert.True(t, len(out.flushed) > 3)
+		assert.Equal(t, true, out.closed)
+		count := 0
+		for _, f := range out.flushed {
+			if f != "hb" {
+				assert.Equal(t, fmt.Sprintf(`{"data":{"counter":%d}}`, count), f)
+				count += 1
+			}
+		}
+
+		assert.Equal(t, count, 3)
 	})
 }
 
