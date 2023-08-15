@@ -4308,6 +4308,7 @@ func TestResolver_ResolveGraphQLSubscription(t *testing.T) {
 		assert.Equal(t, `{"data":{"counter":1}}`, out.flushed[1])
 		assert.Equal(t, `{"data":{"counter":2}}`, out.flushed[2])
 	})
+
 }
 
 func BenchmarkResolver_ResolveNode(b *testing.B) {
