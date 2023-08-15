@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/buger/jsonparser"
 	"github.com/tidwall/sjson"
@@ -240,9 +241,11 @@ type FederationConfiguration struct {
 }
 
 type SubscriptionConfiguration struct {
-	URL           string
-	UseSSE        bool
-	SSEMethodPost bool
+	URL                  string
+	UseSSE               bool
+	SSEMethodPost        bool
+	SSEHeartBeatInterval time.Duration
+	SSEHeartBeatMessage  []byte
 }
 
 type FetchConfiguration struct {
