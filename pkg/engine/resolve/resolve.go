@@ -933,6 +933,7 @@ func (r *Resolver) resolveArrayAsynchronous(ctx *Context, array *Array, arrayIte
 func (r *Resolver) resolveTransformation(ctx *Context, t *Transformation, data []byte, transformBuf *BufPair) error {
 	buffer := r.transformationPool.Get().(*fastbuffer.FastBuffer)
 	defer func() {
+		buffer.Reset()
 		r.transformationPool.Put(buffer)
 	}()
 
