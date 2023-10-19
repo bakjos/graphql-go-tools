@@ -937,7 +937,7 @@ func (r *Resolver) resolveTransformation(ctx *Context, t *Transformation, data [
 		r.transformationPool.Put(buffer)
 	}()
 
-	if err := t.Pipeline.Run(bytes.NewReader(data), buffer); err != nil {
+	if err := t.Pipeline.Run(ctx.ctx, bytes.NewReader(data), buffer); err != nil {
 		return err
 	}
 	return r.resolveNode(ctx, t.InnerValue, buffer.Bytes(), transformBuf)
