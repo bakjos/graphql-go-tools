@@ -133,7 +133,7 @@ func (r *PipelineDataSource) Resolve(ctx context.Context, args ResolverArgs, out
 
 	inputJSON := args.ByKey(literal.INPUT_JSON)
 
-	err = r.Pipeline.Run(bytes.NewReader(inputJSON), out)
+	err = r.Pipeline.Run(ctx, bytes.NewReader(inputJSON), out)
 	if err != nil {
 		r.Log.Error("PipelineDataSource.pipe.Run", log.Error(err))
 	}
