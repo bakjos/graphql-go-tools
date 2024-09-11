@@ -237,6 +237,7 @@ github.com/urfave/cli/v2 v2.27.1/go.mod h1:8qnjx1vcq5s2/wpsqoZFndg2CE5tNFyrTvS6S
 github.com/valyala/fastjson v1.6.4 h1:uAUNq9Z6ymTgGhcm0UynUAB6tlbakBrz6CQFax3BXVQ=
 github.com/valyala/fastjson v1.6.4/go.mod h1:CLCAqky6SMuOcxStkYQvblddUtoRxhYMGLrsQns1aXY=
 github.com/wundergraph/astjson v0.0.0-20240822164222-c1cca919e2c8/go.mod h1:eOTL6acwctsN4F3b7YE+eE2t8zcJ/doLm9sZzsxxxrE=
+github.com/wundergraph/astjson v0.0.0-20240827102346-5fc60fe30f9c/go.mod h1:eOTL6acwctsN4F3b7YE+eE2t8zcJ/doLm9sZzsxxxrE=
 github.com/wundergraph/astjson v0.0.0-20241210134830-8afac530adfe h1:ce4SObDyb/WJZSXNv1ISeoTtqn9u30feksK7GCURDvo=
 github.com/wundergraph/astjson v0.0.0-20241210134830-8afac530adfe/go.mod h1:eOTL6acwctsN4F3b7YE+eE2t8zcJ/doLm9sZzsxxxrE=
 github.com/wundergraph/cosmo/composition-go v0.0.0-20240404083832-79d2290084c6/go.mod h1:Ib+rknmwn4oZFN9SQ4VMP3uF/C/tEINEug5iPQxfrPc=
