@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/jensneuse/pipeline/pkg/pipe"
+	"github.com/jensneuse/pipeline/pkg/step"
 	"io"
 	"net"
 	"net/http"
@@ -1526,6 +1528,47 @@ func TestResolver_ResolveNode(t *testing.T) {
 				},
 			},
 		}, Context{ctx: context.Background()}, `{"data":{"id":"1"}}`
+	}))
+	t.Run("simpletransformation", testGraphQLErrFn(func(t *testing.T, r *Resolver, ctrl *gomock.Controller) (response *GraphQLResponse, ctx Context, expectedErr string) {
+		s, err := step.NewJSON("{\"fullName\":\"{{ .firstName }} {{ .lastName }}\"}")
+		assert.NoError(t, err)
+		return &GraphQLResponse{
+			Fetches: Single(&SingleFetch{
+				FetchConfiguration: FetchConfiguration{DataSource: FakeDataSource(`{"firstName":"John","lastName":"Doe"}`)},
+			}),
+			Data: &Object{
+				Fields: []*Field{
+					{
+						Name: []byte("firstName"),
+						Value: &String{
+							Path: []string{"firstName"},
+						},
+					},
+					{
+						Name: []byte("lastName"),
+						Value: &String{
+							Path: []string{"lastName"},
+						},
+					},
+					{
+						Name: []byte("name"),
+						Value: &Transformation{
+							InnerValue: &Object{
+								Fields: []*Field{
+									{
+										Name: []byte("fullName"),
+										Value: &String{
+											Path: []string{"fullName"},
+										},
+									},
+								},
+							},
+							Pipeline: &pipe.Pipeline{Steps: []pipe.Step{s}},
+						},
+					},
+				},
+			},
+		}, Context{ctx: context.Background()}, `{"data":{"firstName":"John","lastName":"Doe","name":{"fullName":"John Doe"}}}`
 	}))
 	t.Run("custom nullable", testGraphQLErrFn(func(t *testing.T, r *Resolver, ctrl *gomock.Controller) (response *GraphQLResponse, ctx Context, expectedErr string) {
 		return &GraphQLResponse{
