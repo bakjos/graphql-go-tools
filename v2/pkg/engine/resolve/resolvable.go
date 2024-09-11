@@ -487,6 +487,8 @@ func (r *Resolvable) walkNode(node Node, value, parent *astjson.Value) bool {
 		return r.walkEmptyArray(n)
 	case *CustomNode:
 		return r.walkCustom(n, value)
+	case *Transformation:
+		return r.walkTransformation(n, value)
 	default:
 		return false
 	}
@@ -1022,6 +1024,34 @@ func (r *Resolvable) walkCustom(c *CustomNode, value *astjson.Value) bool {
 		r.printBytes(resolved)
 	}
 	return false
+}
+
+func (r *Resolvable) walkTransformation(t *Transformation, value *astjson.Value) bool {
+	if r.print {
+		r.ctx.Stats.ResolvedLeafs++
+	}
+	parent := value
+	value = value.Get(t.Path...)
+	if astjson.ValueIsNull(value) {
+		if t.Nullable {
+			return r.walkNull()
+		}
+		r.addNonNullableFieldError(t.Path, parent)
+		return r.err()
+	}
+	r.marshalBuf = value.MarshalTo(r.marshalBuf[:0])
+
+	buf := pool.BytesBuffer.Get()
+	defer pool.BytesBuffer.Put(buf)
+
+	err := t.Pipeline.Run(r.ctx.ctx, bytes.NewReader(r.marshalBuf), buf)
+
+	if err != nil {
+		r.addError(err.Error(), t.Path)
+		return r.err()
+	}
+
+	return r.walkNode(t.InnerValue, astjson.MustParseBytes(buf.Bytes()))
 }
 
 func (r *Resolvable) addNonNullableFieldError(fieldPath []string, parent *astjson.Value) {

@@ -3,6 +3,8 @@ package resolve
 import (
 	"bytes"
 	"context"
+	"github.com/jensneuse/pipeline/pkg/pipe"
+	"github.com/jensneuse/pipeline/pkg/step"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -549,6 +551,57 @@ func TestResolvable_ResolveWithErrorBubbleUpUntilData(t *testing.T) {
 	err = res.Resolve(context.Background(), object, nil, out)
 	assert.NoError(t, err)
 	assert.Equal(t, `{"errors":[{"message":"Cannot return null for non-nullable field 'Query.topProducts.reviews.author.name'.","path":["topProducts",0,"reviews",1,"author","name"]}],"data":null}`, out.String())
+}
+
+func TestResolvable_ResolveWithTransformation(t *testing.T) {
+	step, err := step.NewJSON("{\"fullName\":\"{{ .firstName }} {{ .lastName }}\"}")
+	assert.NoError(t, err)
+
+	initialData := `{"firstName":"John","lastName":"Doe"}`
+	res := NewResolvable()
+	ctx := &Context{
+		Variables: nil,
+	}
+	err = res.Init(ctx, []byte(initialData), ast.OperationTypeQuery)
+	assert.NoError(t, err)
+	assert.NotNil(t, res)
+	object := &Object{
+		Fields: []*Field{
+			{
+				Name: []byte("firstName"),
+				Value: &String{
+					Path: []string{"firstName"},
+				},
+			},
+			{
+				Name: []byte("lastName"),
+				Value: &String{
+					Path: []string{"lastName"},
+				},
+			},
+			{
+				Name: []byte("name"),
+				Value: &Transformation{
+					InnerValue: &Object{
+						Fields: []*Field{
+							{
+								Name: []byte("fullName"),
+								Value: &String{
+									Path: []string{"fullName"},
+								},
+							},
+						},
+					},
+					Pipeline: &pipe.Pipeline{Steps: []pipe.Step{step}},
+				},
+			},
+		},
+	}
+
+	out := &bytes.Buffer{}
+	err = res.Resolve(context.Background(), object, nil, out)
+	assert.NoError(t, err)
+	assert.Equal(t, `{"data":{"firstName":"John","lastName":"Doe","name":{"fullName":"John Doe"}}}`, out.String())
 }
 
 func BenchmarkResolvable_Resolve(b *testing.B) {
