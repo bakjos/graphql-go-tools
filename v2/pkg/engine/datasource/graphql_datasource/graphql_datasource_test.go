@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jensneuse/pipeline/pkg/pipe"
+	"github.com/jensneuse/pipeline/pkg/step"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -8418,6 +8420,225 @@ func TestGraphQLDataSource(t *testing.T) {
 			},
 			DisableResolveFieldPositions: true,
 		}))
+
+	t.Run("simple query with transformation", RunTest(starWarsSchema, `
+		query MyQuery($id: ID!) {
+			droid(id: $id){
+				name
+				aliased: name
+				friends {
+					name
+				}
+				primaryFunction
+			}
+			hero {
+				name
+			}
+			stringList
+			nestedStringList
+		}
+	`, "MyQuery", &plan.SynchronousResponsePlan{
+		Response: &resolve.GraphQLResponse{
+			Data: &resolve.Object{
+				Fetches: []resolve.Fetch{
+					&resolve.SingleFetch{
+						FetchConfiguration: resolve.FetchConfiguration{
+							DataSource: &Source{},
+							Input:      `{"method":"POST","url":"https://swapi.com/graphql","header":{"Authorization":["$$1$$"],"Invalid-Template":["{{ request.headers.Authorization }}"]},"body":{"query":"query($id: ID!){droid(id: $id){name aliased: name friends {name} primaryFunction} hero {name} stringList nestedStringList}","variables":{"id":$$0$$}}}`,
+							Variables: resolve.NewVariables(
+								&resolve.ContextVariable{
+									Path:     []string{"id"},
+									Renderer: resolve.NewJSONVariableRenderer(),
+								},
+								&resolve.HeaderVariable{
+									Path: []string{"Authorization"},
+								},
+							),
+							PostProcessing: DefaultPostProcessingConfiguration,
+						},
+						DataSourceIdentifier: []byte("graphql_datasource.Source"),
+					},
+				},
+				Fields: []*resolve.Field{
+					{
+						Name: []byte("droid"),
+						Value: &resolve.Object{
+							Path:     []string{"droid"},
+							Nullable: true,
+							Fields: []*resolve.Field{
+								{
+									Name: []byte("name"),
+									Value: &resolve.Transformation{
+										Path: []string{"name"},
+										InnerValue: &resolve.String{
+											Path: []string{"name"},
+										},
+										Pipeline: &pipe.Pipeline{
+											Steps: []pipe.Step{
+												func() pipe.Step {
+													s, _ := step.NewJSON("{\"name\":\"{{ .name }} Modified\"}")
+													return s
+												}(),
+											},
+										},
+									},
+								},
+								{
+									Name: []byte("aliased"),
+									Value: &resolve.Transformation{
+										Path: []string{"aliased"},
+										InnerValue: &resolve.String{
+											Path: []string{"aliased"},
+										},
+										Pipeline: &pipe.Pipeline{
+											Steps: []pipe.Step{
+												func() pipe.Step {
+													s, _ := step.NewJSON("{\"name\":\"{{ .name }} Modified\"}")
+													return s
+												}(),
+											},
+										},
+									},
+								},
+								{
+									Name: []byte("friends"),
+									Value: &resolve.Array{
+										Nullable: true,
+										Path:     []string{"friends"},
+										Item: &resolve.Object{
+											Nullable: true,
+											Fields: []*resolve.Field{
+												{
+													Name: []byte("name"),
+													Value: &resolve.String{
+														Path: []string{"name"},
+													},
+												},
+											},
+										},
+									},
+								},
+								{
+									Name: []byte("primaryFunction"),
+									Value: &resolve.String{
+										Path: []string{"primaryFunction"},
+									},
+								},
+							},
+						},
+					},
+					{
+						Name: []byte("hero"),
+						Value: &resolve.Object{
+							Path:     []string{"hero"},
+							Nullable: true,
+							Fields: []*resolve.Field{
+								{
+									Name: []byte("name"),
+									Value: &resolve.String{
+										Path: []string{"name"},
+									},
+								},
+							},
+						},
+					},
+					{
+						Name: []byte("stringList"),
+						Value: &resolve.Array{
+							Nullable: true,
+							Item: &resolve.String{
+								Nullable: true,
+							},
+						},
+					},
+					{
+						Name: []byte("nestedStringList"),
+						Value: &resolve.Array{
+							Nullable: true,
+							Path:     []string{"nestedStringList"},
+							Item: &resolve.String{
+								Nullable: true,
+							},
+						},
+					},
+				},
+			},
+		},
+	}, plan.Configuration{
+		DataSources: []plan.DataSource{
+			mustDataSourceConfiguration(
+				t,
+				"ds-id",
+				&plan.DataSourceMetadata{
+					RootNodes: []plan.TypeField{
+						{
+							TypeName:   "Query",
+							FieldNames: []string{"droid", "hero", "stringList", "nestedStringList"},
+						},
+					},
+					ChildNodes: []plan.TypeField{
+						{
+							TypeName:   "Character",
+							FieldNames: []string{"name", "friends"},
+						},
+						{
+							TypeName:   "Human",
+							FieldNames: []string{"name", "height", "friends"},
+						},
+						{
+							TypeName:   "Droid",
+							FieldNames: []string{"name", "primaryFunction", "friends"},
+						},
+					},
+				},
+				mustCustomConfiguration(t, ConfigurationInput{
+					Fetch: &FetchConfiguration{
+						URL: "https://swapi.com/graphql",
+						Header: http.Header{
+							"Authorization":    []string{"{{ .request.headers.Authorization }}"},
+							"Invalid-Template": []string{"{{ request.headers.Authorization }}"},
+						},
+					},
+					SchemaConfiguration: mustSchema(t, nil, starWarsSchema),
+				}),
+			),
+		},
+		Fields: []plan.FieldConfiguration{
+			{
+				TypeName:  "Query",
+				FieldName: "droid",
+				Arguments: []plan.ArgumentConfiguration{
+					{
+						Name:       "id",
+						SourceType: plan.FieldArgumentSource,
+					},
+				},
+			},
+			{
+				TypeName:              "Query",
+				FieldName:             "stringList",
+				DisableDefaultMapping: true,
+			},
+			{
+				TypeName:  "Query",
+				FieldName: "nestedStringList",
+				Path:      []string{"nestedStringList"},
+			},
+			{
+				TypeName:  "Droid",
+				FieldName: "name",
+				Pipeline: &pipe.Pipeline{
+					Steps: []pipe.Step{
+						func() pipe.Step {
+							s, _ := step.NewJSON("{\"name\":\"{{ .name }} Modified\"}")
+							return s
+						}(),
+					},
+				},
+			},
+		},
+		DisableResolveFieldPositions: true,
+	}))
 
 	t.Run("custom scalar replacement query", RunTest(starWarsSchema, `
 		query MyQuery($droidId: ID!, $reviewId: ID!){

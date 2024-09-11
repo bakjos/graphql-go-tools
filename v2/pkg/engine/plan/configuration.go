@@ -2,6 +2,7 @@ package plan
 
 import (
 	"github.com/jensneuse/abstractlogger"
+	"github.com/jensneuse/pipeline/pkg/pipe"
 	"github.com/wundergraph/graphql-go-tools/v2/pkg/engine/resolve"
 )
 
@@ -103,6 +104,9 @@ type FieldConfiguration struct {
 	UnescapeResponseJson bool
 	// HasAuthorizationRule needs to be set to true if the Authorizer should be called for this field
 	HasAuthorizationRule bool
+
+	// A pipeline definition for the field
+	Pipeline *pipe.Pipeline
 
 	SubscriptionFilterCondition *SubscriptionFilterCondition
 }

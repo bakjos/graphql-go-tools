@@ -14,6 +14,8 @@ const (
 	NodeKindCustom
 	NodeKindScalar
 	NodeKindStaticString
+
+	NodeKindTransformation
 )
 
 type Node interface {
