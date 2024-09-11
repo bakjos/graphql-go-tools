@@ -3,6 +3,7 @@ package plan
 import (
 	"bytes"
 	"fmt"
+	"github.com/jensneuse/pipeline/pkg/pipe"
 	"reflect"
 	"regexp"
 	"slices"
@@ -599,8 +600,10 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 	enclosingTypeName := v.Walker.EnclosingTypeDefinition.NameString(v.Definition)
 	fieldConfig := v.Config.Fields.ForTypeField(enclosingTypeName, fieldName)
 	unescapeResponseJson := false
+	var transformation *pipe.Pipeline
 	if fieldConfig != nil {
 		unescapeResponseJson = fieldConfig.UnescapeResponseJson
+		transformation = fieldConfig.Pipeline
 	}
 
 	switch v.Definition.Types[typeRef].TypeKind {
@@ -608,11 +611,20 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 		return v.resolveFieldValue(fieldRef, ofType, false, path)
 	case ast.TypeKindList:
 		listItem := v.resolveFieldValue(fieldRef, ofType, true, nil)
-		return &resolve.Array{
+		array := &resolve.Array{
 			Nullable: nullable,
 			Path:     path,
 			Item:     listItem,
 		}
+		if transformation != nil {
+			return &resolve.Transformation{
+				InnerValue: array,
+				Pipeline:   transformation,
+				Path:       path,
+				Nullable:   nullable,
+			}
+		}
+		return array
 	case ast.TypeKindNamed:
 		typeName := v.Definition.ResolveTypeNameString(typeRef)
 		typeDefinitionNode, ok := v.Definition.Index.FirstNodeByNameStr(typeName)
@@ -633,41 +645,42 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 		switch typeDefinitionNode.Kind {
 		case ast.NodeKindScalarTypeDefinition:
 			fieldExport := v.resolveFieldExport(fieldRef)
+			var value resolve.Node
 			switch typeName {
 			case "String":
-				return &resolve.String{
+				value = &resolve.String{
 					Path:                 path,
 					Nullable:             nullable,
 					Export:               fieldExport,
 					UnescapeResponseJson: unescapeResponseJson,
 				}
 			case "Boolean":
-				return &resolve.Boolean{
+				value = &resolve.Boolean{
 					Path:     path,
 					Nullable: nullable,
 					Export:   fieldExport,
 				}
 			case "Int":
-				return &resolve.Integer{
+				value = &resolve.Integer{
 					Path:     path,
 					Nullable: nullable,
 					Export:   fieldExport,
 				}
 			case "Float":
-				return &resolve.Float{
+				value = &resolve.Float{
 					Path:     path,
 					Nullable: nullable,
 					Export:   fieldExport,
 				}
 			case "BigInt":
-				return &resolve.BigInt{
+				value = &resolve.BigInt{
 					Path:     path,
 					Nullable: nullable,
 					Export:   fieldExport,
 				}
 			case "JSON":
 				if unescapeResponseJson {
-					return &resolve.String{
+					value = &resolve.String{
 						Path:                 path,
 						Nullable:             nullable,
 						Export:               fieldExport,
@@ -676,18 +689,36 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 				}
 				fallthrough
 			default:
-				return &resolve.Scalar{
+				value = &resolve.Scalar{
 					Path:     path,
 					Nullable: nullable,
 					Export:   fieldExport,
 				}
 			}
+			if transformation != nil {
+				return &resolve.Transformation{
+					InnerValue: value,
+					Pipeline:   transformation,
+					Path:       path,
+					Nullable:   nullable,
+				}
+			}
+			return value
 		case ast.NodeKindEnumTypeDefinition:
-			return &resolve.String{
+			value := &resolve.String{
 				Path:                 path,
 				Nullable:             nullable,
 				UnescapeResponseJson: unescapeResponseJson,
 			}
+			if transformation != nil {
+				return &resolve.Transformation{
+					InnerValue: value,
+					Pipeline:   transformation,
+					Path:       path,
+					Nullable:   nullable,
+				}
+			}
+			return value
 		case ast.NodeKindObjectTypeDefinition, ast.NodeKindInterfaceTypeDefinition, ast.NodeKindUnionTypeDefinition:
 			object := &resolve.Object{
 				Nullable: nullable,
@@ -701,12 +732,38 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 					fields:     &object.Fields,
 				})
 			})
+			if transformation != nil {
+				return &resolve.Transformation{
+					InnerValue: object,
+					Pipeline:   transformation,
+					Path:       path,
+					Nullable:   nullable,
+				}
+			}
 			return object
 		default:
-			return &resolve.Null{}
+			value := &resolve.Null{}
+			if transformation != nil {
+				return &resolve.Transformation{
+					InnerValue: value,
+					Pipeline:   transformation,
+					Path:       path,
+					Nullable:   nullable,
+				}
+			}
+			return value
 		}
 	default:
-		return &resolve.Null{}
+		value := &resolve.Null{}
+		if transformation != nil {
+			return &resolve.Transformation{
+				InnerValue: value,
+				Pipeline:   transformation,
+				Path:       path,
+				Nullable:   nullable,
+			}
+		}
+		return value
 	}
 }
 
