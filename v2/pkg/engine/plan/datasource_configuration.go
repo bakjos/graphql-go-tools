@@ -190,6 +190,7 @@ func NewDataSourceConfigurationWithName[T any](id string, name string, factory P
 type DataSourceConfiguration[T any] interface {
 	DataSource
 	CustomConfiguration() T
+	Factory() PlannerFactory[T]
 }
 
 type DataSourceUpstreamSchema interface {
@@ -210,6 +211,10 @@ type DataSource interface {
 
 func (d *dataSourceConfiguration[T]) CustomConfiguration() T {
 	return d.custom
+}
+
+func (d *dataSourceConfiguration[T]) Factory() PlannerFactory[T] {
+	return d.factory
 }
 
 func (d *dataSourceConfiguration[T]) CreatePlannerConfiguration(logger abstractlogger.Logger, fetchConfig *objectFetchConfiguration, pathConfig *plannerPathsConfiguration) PlannerConfiguration {
