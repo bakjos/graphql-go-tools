@@ -44,13 +44,17 @@ func (h *gqlSSEConnectionHandler) StartBlocking(sub Subscription) {
 
 	dataCh := make(chan []byte)
 	errCh := make(chan []byte)
+	complete := make(chan bool)
 	defer func() {
+		if complete != nil {
+			close(complete)
+		}
 		close(dataCh)
 		close(errCh)
 		sub.updater.Done()
 	}()
 
-	go h.subscribe(reqCtx, sub, dataCh, errCh)
+	go h.subscribe(reqCtx, sub, dataCh, errCh, complete)
 
 	for {
 		select {
@@ -59,13 +63,15 @@ func (h *gqlSSEConnectionHandler) StartBlocking(sub Subscription) {
 		case data := <-errCh:
 			sub.updater.Update(data)
 			return
+		case <-complete:
+			return
 		case <-reqCtx.Done():
 			return
 		}
 	}
 }
 
-func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscription, dataCh, errCh chan []byte) {
+func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscription, dataCh, errCh chan []byte, complete chan<- bool) {
 	resp, err := h.performSubscriptionRequest(ctx)
 	if err != nil {
 		h.log.Error("failed to perform subscription request", log.Error(err))
@@ -129,6 +135,9 @@ func (h *gqlSSEConnectionHandler) subscribe(ctx context.Context, sub Subscriptio
 
 				switch {
 				case bytes.Equal(event, eventTypeComplete):
+					if complete != nil {
+						complete <- true
+					}
 					return
 				case bytes.Equal(event, eventTypeNext):
 					continue
