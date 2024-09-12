@@ -47,9 +47,7 @@ func (h *gqlSSEConnectionHandler) StartBlocking() {
 	errCh := make(chan []byte)
 	complete := make(chan bool)
 	defer func() {
-		if complete != nil {
-			close(complete)
-		}
+		close(complete)
 		close(dataCh)
 		close(errCh)
 		h.updater.Done()
@@ -140,9 +138,7 @@ func (h *gqlSSEConnectionHandler) subscribe(dataCh, errCh chan []byte, complete 
 
 				switch {
 				case bytes.Equal(event, eventTypeComplete):
-					if complete != nil {
-						complete <- true
-					}
+					complete <- true
 					return
 				case bytes.Equal(event, eventTypeNext):
 					continue
