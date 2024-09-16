@@ -112,6 +112,8 @@ type FieldConfiguration struct {
 	// A pipeline definition for the field
 	Pipeline *pipe.Pipeline
 
+	UseParentObjectForPipeline bool
+
 	SubscriptionFilterCondition *SubscriptionFilterCondition
 }
 
