@@ -616,10 +616,12 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 	enclosingTypeName := v.Walker.EnclosingTypeDefinition.NameString(v.Definition)
 	fieldConfig := v.Config.Fields.ForTypeField(enclosingTypeName, fieldName)
 	unescapeResponseJson := false
+	useParentObjectTransformation := false
 	var transformation *pipe.Pipeline
 	if fieldConfig != nil {
 		unescapeResponseJson = fieldConfig.UnescapeResponseJson
 		transformation = fieldConfig.Pipeline
+		useParentObjectTransformation = fieldConfig.UseParentObjectForPipeline
 	}
 
 	switch v.Definition.Types[typeRef].TypeKind {
@@ -634,10 +636,11 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 		}
 		if transformation != nil {
 			return &resolve.Transformation{
-				InnerValue: array,
-				Pipeline:   transformation,
-				Path:       path,
-				Nullable:   nullable,
+				InnerValue:      array,
+				Pipeline:        transformation,
+				Path:            path,
+				Nullable:        nullable,
+				UseParentObject: useParentObjectTransformation,
 			}
 		}
 		return array
@@ -740,10 +743,11 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 			}
 			if transformation != nil {
 				return &resolve.Transformation{
-					InnerValue: value,
-					Pipeline:   transformation,
-					Path:       path,
-					Nullable:   nullable,
+					InnerValue:      value,
+					Pipeline:        transformation,
+					Path:            path,
+					Nullable:        nullable,
+					UseParentObject: useParentObjectTransformation,
 				}
 			}
 			return value
@@ -805,10 +809,11 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 			})
 			if transformation != nil {
 				return &resolve.Transformation{
-					InnerValue: object,
-					Pipeline:   transformation,
-					Path:       path,
-					Nullable:   nullable,
+					InnerValue:      object,
+					Pipeline:        transformation,
+					Path:            path,
+					Nullable:        nullable,
+					UseParentObject: useParentObjectTransformation,
 				}
 			}
 			return object
@@ -816,10 +821,11 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 			value := &resolve.Null{}
 			if transformation != nil {
 				return &resolve.Transformation{
-					InnerValue: value,
-					Pipeline:   transformation,
-					Path:       path,
-					Nullable:   nullable,
+					InnerValue:      value,
+					Pipeline:        transformation,
+					Path:            path,
+					Nullable:        nullable,
+					UseParentObject: useParentObjectTransformation,
 				}
 			}
 			return value
@@ -828,10 +834,11 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 		value := &resolve.Null{}
 		if transformation != nil {
 			return &resolve.Transformation{
-				InnerValue: value,
-				Pipeline:   transformation,
-				Path:       path,
-				Nullable:   nullable,
+				InnerValue:      value,
+				Pipeline:        transformation,
+				Path:            path,
+				Nullable:        nullable,
+				UseParentObject: useParentObjectTransformation,
 			}
 		}
 		return value
