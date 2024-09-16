@@ -6,10 +6,11 @@ import (
 )
 
 type Transformation struct {
-	Nullable   bool
-	Path       []string
-	InnerValue Node
-	Pipeline   *pipe.Pipeline
+	Nullable        bool
+	UseParentObject bool
+	Path            []string
+	InnerValue      Node
+	Pipeline        *pipe.Pipeline
 }
 
 func (_ *Transformation) NodeKind() NodeKind {
@@ -18,9 +19,10 @@ func (_ *Transformation) NodeKind() NodeKind {
 
 func (c *Transformation) Copy() Node {
 	return &Transformation{
-		Pipeline: c.Pipeline,
-		Nullable: c.Nullable,
-		Path:     c.Path,
+		Pipeline:        c.Pipeline,
+		Nullable:        c.Nullable,
+		Path:            c.Path,
+		UseParentObject: c.UseParentObject,
 	}
 }
 
@@ -43,6 +45,14 @@ func (c *Transformation) Equals(n Node) bool {
 	}
 
 	if c.Pipeline != other.Pipeline {
+		return false
+	}
+
+	if c.Nullable != other.Nullable {
+		return false
+	}
+
+	if c.UseParentObject != other.UseParentObject {
 		return false
 	}
 
