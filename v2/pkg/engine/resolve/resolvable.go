@@ -1094,14 +1094,11 @@ func (r *Resolvable) walkEnum(e *Enum, value *astjson.Value) bool {
 }
 
 func (r *Resolvable) walkTransformation(t *Transformation, value *astjson.Value) bool {
-	parent := value
 	value = value.Get(t.Path...)
 	if astjson.ValueIsNull(value) {
 		if t.Nullable {
 			return r.walkNull()
 		}
-		r.addNonNullableFieldError(t.Path, parent)
-		return r.err()
 	}
 	r.marshalBuf = value.MarshalTo(r.marshalBuf[:0])
 
