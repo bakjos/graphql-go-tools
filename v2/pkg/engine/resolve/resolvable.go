@@ -990,14 +990,16 @@ func (r *Resolvable) walkTransformation(t *Transformation, value *astjson.Value)
 	if r.print {
 		r.ctx.Stats.ResolvedLeafs++
 	}
-	parent := value
-	value = value.Get(t.Path...)
-	if astjson.ValueIsNull(value) {
-		if t.Nullable {
-			return r.walkNull()
+	if !t.UseParentObject {
+		parent := value
+		value = value.Get(t.Path...)
+		if astjson.ValueIsNull(value) {
+			if t.Nullable {
+				return r.walkNull()
+			}
+			r.addNonNullableFieldError(t.Path, parent)
+			return r.err()
 		}
-		r.addNonNullableFieldError(t.Path, parent)
-		return r.err()
 	}
 	r.marshalBuf = value.MarshalTo(r.marshalBuf[:0])
 
