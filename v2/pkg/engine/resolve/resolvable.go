@@ -6,6 +6,7 @@ import (
 	goerrors "errors"
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/goccy/go-json"
@@ -35,18 +36,19 @@ type Resolvable struct {
 	astjsonArena *astjson.Arena
 	parsers      []*astjson.Parser
 
-	print              bool
-	out                io.Writer
-	printErr           error
-	path               []fastjsonext.PathElement
-	depth              int
-	operationType      ast.OperationType
-	renameTypeNames    []RenameTypeName
-	ctx                *Context
-	authorizationError error
-	xxh                *xxhash.Digest
-	authorizationAllow map[uint64]struct{}
-	authorizationDeny  map[uint64]string
+	print               bool
+	out                 io.Writer
+	printErr            error
+	path                []fastjsonext.PathElement
+	depth               int
+	operationType       ast.OperationType
+	renameTypeNames     []RenameTypeName
+	ctx                 *Context
+	authorizationError  error
+	xxh                 *xxhash.Digest
+	authorizationAllow  map[uint64]struct{}
+	authorizationDeny   map[uint64]string
+	transformationCache map[string]*astjson.Value
 
 	wroteErrors bool
 	wroteData   bool
@@ -199,6 +201,8 @@ func (r *Resolvable) Resolve(ctx context.Context, rootData *Object, fetchTree *F
 
 	r.skipAddingNullErrors = r.hasErrors() && !r.hasData()
 
+	r.transformationCache = make(map[string]*astjson.Value)
+
 	hasErrors := r.walkObject(rootData, r.data)
 	if r.authorizationError != nil {
 		return r.authorizationError
@@ -222,6 +226,7 @@ func (r *Resolvable) Resolve(ctx context.Context, rootData *Object, fetchTree *F
 		r.printErr = r.printExtensions(ctx, fetchTree)
 	}
 	r.printBytes(rBrace)
+	r.transformationCache = nil
 	return r.printErr
 }
 
@@ -1041,6 +1046,20 @@ func (r *Resolvable) walkTransformation(t *Transformation, value *astjson.Value)
 	if r.print {
 		r.ctx.Stats.ResolvedLeafs++
 	}
+	var key bytes.Buffer
+	for i, p := range r.path {
+		key.WriteString(p.Name)
+		key.WriteString(".")
+		key.WriteString(strconv.Itoa(p.Idx))
+		if i < len(r.path)-1 {
+			key.WriteString(".")
+		}
+	}
+	sKey := key.String()
+	if v, ok := r.transformationCache[sKey]; ok {
+		return r.walkNode(t.InnerValue, v)
+	}
+
 	if !t.UseParentObject {
 		parent := value
 		value = value.Get(t.Path...)
@@ -1064,7 +1083,9 @@ func (r *Resolvable) walkTransformation(t *Transformation, value *astjson.Value)
 		return r.err()
 	}
 
-	return r.walkNode(t.InnerValue, astjson.MustParseBytes(buf.Bytes()))
+	v := astjson.MustParseBytes(buf.Bytes())
+	r.transformationCache[sKey] = v
+	return r.walkNode(t.InnerValue, v)
 }
 
 func (r *Resolvable) addNonNullableFieldError(fieldPath []string, parent *astjson.Value) {
