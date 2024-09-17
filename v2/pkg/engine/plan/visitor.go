@@ -725,10 +725,11 @@ func (v *Visitor) resolveFieldValue(fieldRef, typeRef int, nullable bool, path [
 			}
 			if transformation != nil {
 				return &resolve.Transformation{
-					InnerValue: value,
-					Pipeline:   transformation,
-					Path:       path,
-					Nullable:   nullable,
+					InnerValue:      value,
+					Pipeline:        transformation,
+					Path:            path,
+					Nullable:        nullable,
+					UseParentObject: useParentObjectTransformation,
 				}
 			}
 			return value
