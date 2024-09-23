@@ -1054,13 +1054,9 @@ func (r *Resolvable) walkTransformation(t *Transformation, value *astjson.Value)
 			key.WriteString(".")
 		}
 	}
-	sKey := key.String()
-	if v, ok := r.transformationCache[sKey]; ok {
-		return r.walkNode(t.InnerValue, v)
-	}
 
+	parent := value
 	if !t.UseParentObject {
-		parent := value
 		value = value.Get(t.Path...)
 		if astjson.ValueIsNull(value) {
 			if t.Nullable {
@@ -1070,6 +1066,12 @@ func (r *Resolvable) walkTransformation(t *Transformation, value *astjson.Value)
 			return r.err()
 		}
 	}
+
+	sKey := key.String()
+	if v, ok := r.transformationCache[sKey]; ok {
+		return r.walkNode(t.InnerValue, v, parent)
+	}
+
 	r.marshalBuf = value.MarshalTo(r.marshalBuf[:0])
 
 	buf := pool.BytesBuffer.Get()
@@ -1084,7 +1086,7 @@ func (r *Resolvable) walkTransformation(t *Transformation, value *astjson.Value)
 
 	v := astjson.MustParseBytes(buf.Bytes())
 	r.transformationCache[sKey] = v
-	return r.walkNode(t.InnerValue, v)
+	return r.walkNode(t.InnerValue, v, parent)
 }
 
 func (r *Resolvable) addNonNullableFieldError(fieldPath []string, parent *astjson.Value) {
