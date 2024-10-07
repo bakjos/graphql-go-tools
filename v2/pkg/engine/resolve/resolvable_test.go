@@ -558,7 +558,7 @@ func TestResolvable_ResolveWithTransformation(t *testing.T) {
 	assert.NoError(t, err)
 
 	initialData := `{"firstName":"John","lastName":"Doe"}`
-	res := NewResolvable()
+	res := NewResolvable(ResolvableOptions{})
 	ctx := &Context{
 		Variables: nil,
 	}
