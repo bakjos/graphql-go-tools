@@ -81,7 +81,7 @@ func (v *inputFieldDefaultInjectionVisitor) recursiveInjectInputFields(inputObje
 		isTypeScalarOrEnum := v.isScalarTypeOrExtension(valDef.Type, v.definition)
 		hasDefault := valDef.DefaultValue.IsDefined
 
-		varVal, _, _, err := jsonparser.Get(varValue, fieldName)
+		varVal, dt, _, err := jsonparser.Get(varValue, fieldName)
 		if err != nil && err != jsonparser.KeyPathNotFoundError {
 			v.StopWithInternalErr(err)
 			return nil, false, err
@@ -91,7 +91,11 @@ func (v *inputFieldDefaultInjectionVisitor) recursiveInjectInputFields(inputObje
 		if !isTypeScalarOrEnum {
 			var valToUse []byte
 			if existsInVal {
-				valToUse = varVal
+				if dt == jsonparser.String && valToUse[0] != '"' {
+					valToUse = append([]byte(`"`), append(varVal, []byte(`"`)...)...)
+				} else {
+					valToUse = varVal
+				}
 			} else if hasDefault {
 				defVal, err := v.definition.ValueToJSON(valDef.DefaultValue.Value)
 				if err != nil {
