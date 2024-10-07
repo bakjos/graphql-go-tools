@@ -1119,9 +1119,6 @@ func (r *Resolvable) walkEnum(e *Enum, value *astjson.Value) bool {
 }
 
 func (r *Resolvable) walkTransformation(t *Transformation, value *astjson.Value) bool {
-	if r.print {
-		r.ctx.Stats.ResolvedLeafs++
-	}
 	var key bytes.Buffer
 	for i, p := range r.path {
 		key.WriteString(p.Name)
