@@ -62,6 +62,8 @@ func (h *gqlSSEConnectionHandler) StartBlocking() {
 		case data := <-errCh:
 			h.updater.Update(data)
 			return
+		case <-complete:
+			return
 		case <-h.requestContext.Done():
 			return
 		case <-h.engineContext.Done():
