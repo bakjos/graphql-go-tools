@@ -41,6 +41,10 @@ func (e *Configuration) SetCustomResolveMap(customResolveMap map[string]resolve.
 	e.plannerConfig.CustomResolveMap = customResolveMap
 }
 
+func (e *Configuration) SetDebugConfiguration(debugConfig plan.DebugConfiguration) {
+	e.plannerConfig.Debug = debugConfig
+}
+
 func (e *Configuration) AddDataSource(dataSource plan.DataSource) {
 	e.plannerConfig.DataSources = append(e.plannerConfig.DataSources, dataSource)
 }
